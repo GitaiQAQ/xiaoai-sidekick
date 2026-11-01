@@ -67,6 +67,9 @@ if($Start){
  }
  $info=New-Object Diagnostics.ProcessStartInfo
  $info.FileName='C:\Windows\System32\OpenSSH\ssh.exe'
+ $env:SSH_ASKPASS=Join-Path $ProjectDir 'tools\local\ssh-askpass.cmd'
+ $env:SSH_ASKPASS_REQUIRE='force'
+ $env:DISPLAY='codex'
  $info.UseShellExecute=$false;$info.CreateNoWindow=$true
  $info.RedirectStandardInput=$true;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true
  $info.Arguments='-T -o HostKeyAlgorithms=+ssh-rsa -o UserKnownHostsFile=C:/Users/gitai/Desktop/lx06-agent/tools/local/known_hosts -o ConnectTimeout=8 -o NumberOfPasswordPrompts=1 root@192.168.100.210 "exec /lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-web-armhf --daemon > /data/lx06-agent/web.log 2>&1"'

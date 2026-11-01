@@ -1,5 +1,31 @@
 # Reference: 项目上下文
 
+GitHub / Claude 接续请先读[长期接续入口](claude-wake-analysis.md)，包含当前未解决问题、逐轮证据、构建命令及不入库材料的恢复边界。
+
+## 原厂两级引擎已独立调用（第二十四轮）
+
+见[第二十四轮报告](../reports/原厂两级判醒与独立引擎调用-第二十四轮.md)。只读探针从原厂进程读了 108 B 控制字，两级实际 chunk=5、min/max-self-loop=1/80、acoustic-scale=0.1、min-trans-loglikelihood=-1000、score-threshold=1、wait=60、frames-forward=30。固定链路与映射检查在 src/native_wake_config_probe.c，错误目标拒绝。
+
+src/native_wake_engine_probe.c 在隔离进程预加载设备自带 pthread/stdC++/ALSA 后，直接初始化、销毁原厂两级模型；特意传不存在的模型路径仍加载内置权重，与加载分支相符。10 秒生成静音批量推理 622 ms、峰值 RSS7040 kB、无非零输出；合成“小爱同学”一级命中 score8.114393，二级未确认，随后 flag2 超时。最终探针7596 B，依赖既有原厂库，不是完整独立安装包。上述不是现场召回/音乐误触发验收。
+
+tools/Build-WakeProbes.ps1 和 tools/native-wake-dependencies.py 可重建与核对依赖。所有本轮设备临时程序、fixture、trace 已清除；原厂 PID1282/2527 未变、TracerPid0，正式 Duplex 哈希未变。未采集现场音频、未改模型或生产服务。仍缺“豆包豆包”可用模型及全部确认/拒绝逻辑，音乐自激活尚未修复。
+
+## 当前首要故障：音乐自激活仍未解决（第二十三轮）
+
+原厂成本补测：两级内置模型共 2318298 B（2.21 MiB），已包含在 4282440 B（4.08 MiB）的 libxaudio_engine.so 中；加 mipns-xiaomi 与 libmdspeech.so 三文件共 4.58 MiB（不含其他依赖）。整进程 smaps RSS 13976 kB / PSS 12672 kB；10.02 秒采样约单核 62.5% / 四核总能力 15.6%。这些不是独立 KWS 的最低需求或新增任务成本，详见第二十三轮报告资源补测。
+
+用户明确反馈无人呼叫仍不断自激活，并要求保留“豆包豆包”。此前第二十二轮两次判醒不能证明准确识别或误触发已修复。现有日志有 71 次判醒、21 次 no_speech；至少 8 次候选暂停前后以完全相同距离从 hits=2 变 hits=3，复用了旧音乐窗口；还有绕过候选暂停的直接判醒。开始排查时自有语音服务已被 signal 停止，本轮未重启或替换正式版本，原厂播放器保留。
+
+本轮深入确认原厂 Rice/Paddy 的 MFCC/CMVN、TDNN prior/Viterbi/IsKeyword 和两级缓存处理；尚未完整还原全部拒绝条件，原厂“小爱同学”模型不能直接声称支持“豆包豆包”。新增 --wake-audit 隔离诊断，AEC 输出与硬件参考只在内存中比较；45 秒音乐 217 窗、18 个模板候选，简单参考距离拒绝规则不充分，未上线。PC 上现成神经 KWS 能检出合成语音，却未检出已有真人录音；预编译 ARM 库另有 glibc 版本不兼容，未安装设备。详细证据、构建哈希与边界见[第二十三轮报告](../reports/音乐自激活与原厂判醒复核-第二十三轮.md)。当前仅有诊断进展，没有完成修复。
+
+## 音乐下唤醒笔记补全
+
+已核对并补全 implemented 下的[三项叠加成因与重引入条件](../implemented/bug-fix/2026-11-01-music-wake-stopped-firing.md)和[同音频采集 A/B 方法](../implemented/testing/2026-11-01-capture-ab-comparison.md)，与采集架构及第二十二轮报告互链。本轮仅文档核对，无新设备实测。纠正单麦 12.05 与阈值 12.5048 的大小判断；区分最低距离与连续确认、诊断阈值与线上 15.0 阈值。诊断实际为 11 路，只有 ch0 与六麦混音含 AEC 分支，20 秒样本缓冲约 6.7 MiB 为代码推算，并非实测 RSS。
+
+## 能力边界与打包提案（暂不实施）
+
+用户要求记录[能力边界与二进制打包提案](../proposed/architecture/2026-11-01-capability-boundaries-and-binary-packaging.md)：后续米家等能力保持代码模块与接口独立，不直接混入 Web 或 Agent；不要求独立 bin 或常驻进程。若实际比较证明合编更小且其他约束满足，优先合编。随功能设计推进，尽量不产生额外改造与基础设施。本轮仅文档修改，无代码、构建或设备改动；合编与拆分的体积差异尚未实测。
+
 ## 用户目标与偏好
 - 设备：小爱音箱 Pro LX06；App 固件版本由用户确认为 1.94.13。
 - 用户已有 GPT / DeepSeek / 豆包等 API 条件；未收集或写入任何密钥。
@@ -278,3 +304,17 @@ Agent loop：新增 `src/native_agent_loop.h`，提供 provider 接口（stats/s
 - 文档结构扩展：Agent Notes 之外的文档统一迁入受控区域——手册、协议、策略、部署说明、状态流水与索引放 `reference/`（小写 kebab-case，`# Reference:` 头部），逐轮证据放 `reports/`（`# Report:` 头部），两者不再跟随生命周期分类。门禁同时检查三个区域。
 
 - 材料目录重组：`research/` 拆为 `rom/`（可公开的固件与上游源码，用于无音箱复现）、`private/`（录音、运行时快照、设备回读、凭据）与 `temp/`（根文件系统、逆向分析、清单，可由 tools 重算）；`SOURCES.md` 迁为 `reference/sources.md`。工具脚本路径同步更新，`tools/local/` 收纳 SSH 凭据并加入忽略列表；`tools/` 本身不再被忽略。分类与发布规则见 `rom/README.md`、`private/README.md` 与 `tools/README.md`。
+
+## 采集路径接入 AEC（第二十二轮，2026-11-01）
+
+`src/native_capture.h` 成为唯一采集入口：默认 `Capture` dsnoop 8 通道，ch0–ch5 六麦平均作麦克风、ch6 作参考，3 点平均降到 16 kHz，128 样本一帧跑 Speex AEC + 预处理，输出同时供本地唤醒与云端上行；打不开 8 通道、缺 `libspeexdsp` 或 Speex 初始化失败时回退 `mico_record`，`--no-aec` / `LX06_AEC=0` 强制回退。
+
+关键修复与参数：
+
+- 本机库导出 `speex_echo_ctl`，不是 `speex_echo_state_ctl`；之前采样率一直是库默认 8 kHz。显式设为 16000 后，同一段语音的 AEC 距离从 13.3 降到 9.6。
+- 麦克风从单路 ch0 改为 6 麦平均：音乐下语音距离 12.05 → 11.66，刚过 12.50 阈值。
+- 预处理会损伤语音约 2.5 个距离点，但它是音乐残留的主要抑制；关掉会误唤醒。
+- 音乐下阈值放宽到 15.0，2 连击后暂停播放器 2.2 秒做第 3 窗确认，6 秒冷却；静音环境仍 12.5 / 3 连击。
+- 资源：单核约 21%，RSS 约 2.3 MB。
+
+线上验证：音乐播放中两次真人“豆包豆包”以 12.5082、14.6845 在候选暂停后确认，会话正常建立并恢复播放；同一实例有 2 次未确认暂停。用户确认可用。高音量、远场、打断和长时间稳定性未验证。诊断入口 `--mic-compare <秒>` 只在内存里并行打分各采集版本。报告见 `reports/采集路径回声消除接入-第二十二轮.md`。

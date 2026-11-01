@@ -1,5 +1,11 @@
 # XiaoAI Sidekick
 
+Claude 接续入口：[原厂唤醒逆向与未完成项](.agents/notes/reference/claude-wake-analysis.md)。
+
+当前已知故障：播放音乐时仍会无人呼叫自激活，尚未修复。此前短时判醒不能作为误触发验收通过。最新证据与原厂判醒分析见[第二十三轮报告](.agents/notes/reports/音乐自激活与原厂判醒复核-第二十三轮.md)。
+
+原厂逆向进展：已在隔离进程直接初始化、调用原厂两级引擎，并验证一级候选后二级超时拒绝；尚未获得“豆包豆包”模型或完成误激活修复，见[第二十四轮报告](.agents/notes/reports/原厂两级判醒与独立引擎调用-第二十四轮.md)。
+
 Current deployment (revision 18, with rounds 19–21): Netease chart and account playlists can queue their first 20 songs in the factory player; the page shows track metadata and queue position. Tools come from one registry in the console; the voice client fetches that catalog and forwards calls. The wake acknowledgement uses the Doubao voice, answers are level-matched, and saying the wake word interrupts a reply. A session with no answer closes after 10 seconds. Audio capture and echo-cancellation findings (6 microphone channels plus 2 hardware-aligned reference channels, factory Speex AEC) are in `.agents/notes/reference/audio-pipeline.md`; the AEC prototype measures about 19 dB suppression but is not yet in the live path. Console: http://192.168.100.210:18080/.
 
 **大模型驱动的小爱音箱副驾**

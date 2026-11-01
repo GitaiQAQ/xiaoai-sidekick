@@ -1,5 +1,9 @@
 # Reference: 研究来源
 
+第二十四轮以本机 ELF 指令、运行配置固定字段和隔离进程实验为证据，未新增外部资料。见[原厂两级判醒与独立引擎调用](../reports/原厂两级判醒与独立引擎调用-第二十四轮.md)：确认原厂模型初始化/推理可独立调用，实际观察到一级候选后二级超时拒绝；不等于已有“豆包豆包”模型或已修复误激活。
+
+第二十三轮：原厂算法证据以本机 libxaudio_engine.so 的 Rice/Paddy、MFCC/CMVN、Viterbi/IsKeyword 与两级缓存调用反汇编为准，见[报告](../reports/音乐自激活与原厂判醒复核-第二十三轮.md)。备选方案查阅 [Speex 官方源码](https://github.com/xiph/speexdsp/blob/master/libspeexdsp/mdf.c)、[Sherpa 官方 KWS 文档](https://k2-fsa.github.io/sherpa/onnx/kws/index.html)、[ARM 构建脚本](https://github.com/k2-fsa/sherpa-onnx/blob/v1.12.15/.github/workflows/arm-linux-gnueabihf.yaml)及 [Open-XiaoAI KWS](https://github.com/idootop/open-xiaoai/blob/main/examples/kws/README.md)。这些公开项目不是本机原厂 KWS 的源码；本轮 PC 实验未通过真人录音召回与 ARM ABI 兼容性检查，未部署。
+
 - https://github.com/idootop/open-xiaoai
 - https://github.com/idootop/open-xiaoai/blob/main/docs/flash.md
 - https://github.com/idootop/open-xiaoai/blob/main/packages/client-patch/README.md

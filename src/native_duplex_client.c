@@ -33,13 +33,14 @@
 #include "native_kws.h"
 #include "native_session_policy.h"
 #include "native_agent_loop.h"
+#include "native_capture.h"
 
 #define RATE_IN 16000
 #define RATE_OUT 24000
 #define FRAME_IN 320
 #define MAX_MESSAGE 65536
 
-enum { MODE_DUPLEX, MODE_TONE, MODE_SCORE, MODE_LIVE, MODE_KWS, MODE_CAPTURE, MODE_KWS_WAV };
+enum { MODE_DUPLEX, MODE_TONE, MODE_SCORE, MODE_LIVE, MODE_KWS, MODE_CAPTURE, MODE_KWS_WAV, MODE_WAKE_AUDIT };
 
 struct curl_api {
     CURLcode (*global_init)(long);
@@ -381,7 +382,7 @@ static void drain(struct client *w,struct lx_ws_receiver *r) {
 /* ---------- provider/host adapters for the shared agent loop ---------- */
 
 struct agent_provider_ctx {struct client *w;struct lx_ws_receiver *rx;};
-struct agent_host_ctx {struct client *w;void *capture;struct tb_job *tools;int led_owned;struct lx_kws *kws;};
+struct agent_host_ctx {struct client *w;struct lx_capture *capture;struct tb_job *tools;int led_owned;struct lx_kws *kws;};
 
 static struct lx_agent_stats *agent_stats(void *c){return &((struct agent_provider_ctx *)c)->w->st;}
 static int agent_send_audio(void *c,const short *pcm,int samples){return send_pcm(((struct agent_provider_ctx *)c)->w,pcm,samples);}
@@ -394,8 +395,8 @@ static int agent_pump(void *c,int timeout_ms){
     return 0;
 }
 static int agent_stop(void *c){(void)c;return g_stop;}
-static long agent_capture(void *c,short *pcm,int frames){struct agent_host_ctx *h=c;return g_alsa.readi(h->capture,pcm,(unsigned long)frames);}
-static int agent_recover(void *c,long error){struct agent_host_ctx *h=c;return g_alsa.recover(h->capture,(int)error,1);}
+static long agent_capture(void *c,short *pcm,int frames){struct agent_host_ctx *h=c;return lx_capture_read(h->capture,pcm,frames);}
+static int agent_recover(void *c,long error){struct agent_host_ctx *h=c;return lx_capture_recover(h->capture,error);}
 static void agent_play(void *c,const char *b64){struct agent_host_ctx *h=c;play_delta(h->w,b64);}
 static int agent_idle(void *c){struct agent_host_ctx *h=c;return playback_idle(h->w->ring);}
 static void agent_led(void *c,int state){struct agent_host_ctx *h=c;if(h->led_owned)feedback_led(state);}
@@ -442,6 +443,7 @@ struct kws_ctx {
     int quiet;
     int wakes;
     int near;
+    int candidate_hits;
     int64_t start_ms;
     float best;
 };
@@ -450,15 +452,20 @@ struct kws_ctx {
    lands just above the threshold. Two consecutive hits pause playback briefly
    so the confirmation runs on clean audio; no wake means quick resume. */
 static int g_tools_ready,g_candidate_paused;
+static int64_t g_candidate_last;
+/* Threshold passed on the command line, if any. Music mode may widen it. */
+static float g_threshold_cli=-1.0f;
 static int64_t g_candidate_until;
 static int candidate_music_pause(void){
     if(!g_tools_ready||g_candidate_paused)return 0;
+    /* A false candidate should not keep dipping the music. */
+    if(now_ms()-g_candidate_last<6000)return 0;
     void *st=tb_request("music.status",tj.object(),now_ms()+800);
     int playing=st&&tb_i(st,"status")==1;if(st)tj.put(st);
     if(!playing)return 0;
     void *r=tb_request("music.pause",tj.object(),now_ms()+800);
     if(!r)return 0;
-    tj.put(r);g_candidate_paused=1;g_candidate_until=now_ms()+2200;
+    tj.put(r);g_candidate_paused=1;g_candidate_until=now_ms()+2200;g_candidate_last=now_ms();
     puts("music_paused_for_candidate");fflush(stdout);
     return 1;
 }
@@ -479,13 +486,13 @@ static void kws_log(void *context,struct lx_kws *k,int span_ms,float dist,int hi
             k->evals,(int)(ms-c->start_ms),span_ms,(double)k->peak_db,(double)k->floor_db,
             (double)k->flux,(double)dist,k->hits,hit,woke);
     if(woke)c->wakes++;
-    if(!woke&&k->hits>=3)c->near=1;
+    if(!woke&&k->hits>=(c->candidate_hits>0?c->candidate_hits:3))c->near=1;
     fflush(stdout);
 }
 
-/* Read mico_record until a wake word is detected or the standby time ends.
-   The last 300 ms of audio is copied to preroll_out on success. */
-static int kws_listen(void *capture,struct lx_kws *k,int seconds,int quiet,
+/* Read the capture stream until a wake word is detected or the standby time
+   ends. The last 300 ms of audio is copied to preroll_out on success. */
+static int kws_listen(struct lx_capture *capture,struct lx_kws *k,int seconds,int quiet,
                       short *preroll_out) {
     struct kws_ctx ctx;
     short mic[FRAME_IN];
@@ -495,6 +502,7 @@ static int kws_listen(void *capture,struct lx_kws *k,int seconds,int quiet,
     ctx.best=1e30f;
     ctx.start_ms=now_ms();
     int64_t next_music_poll=0;
+    if(g_threshold_cli<0.0f)g_threshold_cli=lx_kws_threshold_override;
     stop_at=ctx.start_ms+(int64_t)seconds*1000;
     while((preroll_out? !k->woke : 1)&&!g_stop&&now_ms()<stop_at) {
         /* Music raises the false-hit rate and masks the word. While the factory
@@ -504,11 +512,22 @@ static int kws_listen(void *capture,struct lx_kws *k,int seconds,int quiet,
             next_music_poll=now_ms()+5000;
             void *st=tb_request("music.status",tj.object(),now_ms()+300);
             int playing=st&&tb_i(st,"status")==1;if(st)tj.put(st);
-            int want=playing?4:3;
-            if(k->min_hits!=want){k->min_hits=want;printf("kws_min_hits=%d music=%d\n",want,playing);fflush(stdout);}
+            int want=playing&&!capture->aec?4:3;
+            if(k->min_hits!=want){k->min_hits=want;printf("kws_min_hits=%d music=%d aec=%d\n",want,playing,capture->aec);fflush(stdout);}
+            /* Music plus AEC leaves speech around distance 14 while loud music
+               sits near 13. Widen the candidate threshold and pause playback
+               after two consecutive hits; the pause supplies clean audio for
+               the third confirmation window. */
+            int aec_music=playing&&capture->aec;
+            float limit=aec_music?(g_threshold_cli>0.0f?g_threshold_cli:15.0f):g_threshold_cli;
+            if(lx_kws_threshold_override!=limit){
+                lx_kws_threshold_override=limit;
+                printf("kws_threshold=%.2f music=%d\n",(double)lx_kws_threshold(),playing);fflush(stdout);
+            }
+            ctx.candidate_hits=aec_music?2:3;
         }
-        long got=g_alsa.readi(capture,mic,(unsigned long)FRAME_IN);
-        if(got<0){if(g_alsa.recover(capture,(int)got,1)<0)break;continue;}
+        long got=lx_capture_read(capture,mic,(unsigned long)FRAME_IN);
+        if(got<0){if(lx_capture_recover(capture,got)<0)break;continue;}
         if(!got)continue;
         lx_kws_push(k,mic,(int)got,kws_log,&ctx);
         frames++;
@@ -563,12 +582,57 @@ static int kws_scan_buffer(const short *pcm,int n) {
     return 0;
 }
 
+/* Score one buffer without printing every window, for A/B capture comparisons. */
+struct kws_measure {float best;int wakes,scored;};
+static void kws_measure(const short *pcm,int n,struct kws_measure *out) {
+    struct lx_kws *k=calloc(1,sizeof(*k));
+    memset(out,0,sizeof(*out));out->best=1e30f;
+    if(!k)return;
+    lx_kws_init(k);
+    for(int i=0;i+320<=n;i+=320) {
+        int before=k->evals;
+        lx_kws_push(k,pcm+i,320,NULL,NULL);
+        if(k->evals==before)continue;
+        if(k->last_dist>=0.0f){out->scored++;if(k->last_dist<out->best)out->best=k->last_dist;}
+        if(k->woke){out->wakes++;k->woke=0;k->hits=0;}
+    }
+    free(k);
+}
+
 /* ---------- one realtime session ---------- */
+
+/* Diagnostic playback-source comparison. Unlike adjacent overlapping wake
+   windows, the hardware playback reference is independent of near-end speech.
+   This is an experiment, not yet an activation gate. */
+struct wake_audit_ctx {struct lx_kws *reference;int candidates;};
+static void wake_audit_report(void *context,struct lx_kws *k,int span,float dist,int hit,int woke) {
+    struct wake_audit_ctx *a=context;
+    struct lx_kws *r=a->reference;
+    (void)span;(void)woke;
+    if(!hit)return;
+    int first,last,n=lx_kws_trim(k->db,k->nframes,&first,&last);
+    static struct lx_kws_utt mic,ref;
+    float echo=1e30f,ref_peak=-200.0f;
+    if(n<=0||r->nframes!=k->nframes)return;
+    mic.n=n;lx_kws_finalize(&mic,(const float (*)[LX_KWS_COEF])&k->cep[first][0]);
+    for(int lag=0;lag<=30;lag+=5) {
+        int start=first-lag;
+        if(start<0)continue;
+        ref.n=n;lx_kws_finalize(&ref,(const float (*)[LX_KWS_COEF])&r->cep[start][0]);
+        float d=lx_kws_dtw(mic.f[0],n,ref.f[0],n);
+        if(d<echo)echo=d;
+    }
+    for(int i=0;i<r->nframes;i++)if(r->db[i]>ref_peak)ref_peak=r->db[i];
+    a->candidates++;
+    printf("wake_audit win=%d wake_dist=%.4f echo_dist=%.4f reference_wake=%.4f reference_peak=%.1f hits=%d\n",
+        k->evals,(double)dist,(double)echo,(double)r->last_dist,(double)ref_peak,k->hits);
+    fflush(stdout);
+}
 
 /* A bounded realtime session, with half-duplex follow-up turns after playback.
    All cloud events stay in the same session so conversation history is retained. */
 static int run_session(struct curl_api *a,void *crypto,void *json,const char *key,
-                       void *capture,int mode,int seconds,const short *preroll,
+                       struct lx_capture *capture,int mode,int seconds,const short *preroll,
                        int preroll_n,int *resume_music,struct lx_kws *kws) {
     struct client w;struct ring ring;struct lx_ws_receiver receiver;
     struct tb_job tools={0};int tools_ready=0,play_after_reply=0;
@@ -991,7 +1055,8 @@ int main(int argc,char **argv) {
     void *curl=NULL,*crypto=NULL,*json=NULL;
     struct curl_api a;
     struct lx_kws *kws=NULL;
-    void *capture=NULL;
+    static struct lx_capture capture;
+    int capture_ready=0,disable_aec=0;
 
     signal(SIGINT,on_signal);signal(SIGTERM,on_signal);signal(SIGHUP,on_signal);
     if(argc==2&&!strcmp(argv[1],"--transport-self-test"))return frame_send_test();
@@ -1020,6 +1085,8 @@ int main(int argc,char **argv) {
         if(e&&atoi(e)>=100&&atoi(e)<=100000)g_voice_gate=atoi(e);
         e=getenv("LX_ANSWER_GAIN");
         if(e&&atoi(e)>=100&&atoi(e)<=400)g_answer_gain=atoi(e);
+        e=getenv("LX06_AEC");
+        if(e&&!strcmp(e,"0"))disable_aec=1;
     }
 
     if(argc>1&&!strcmp(argv[1],"--kws-score")) {
@@ -1028,6 +1095,8 @@ int main(int argc,char **argv) {
     } else if(argc>1&&!strcmp(argv[1],"--kws-dump")) {
         if(argc<3){fputs("usage: --kws-dump <wav>\n",stderr);return 2;}
         mode=MODE_SCORE;wav=argv[2];dump_wav=1;
+    } else if(argc>1&&!strcmp(argv[1],"--wake-audit")) {
+        mode=MODE_WAKE_AUDIT;seconds=argc>2?atoi(argv[2]):60;
     } else if(argc>1&&!strcmp(argv[1],"--kws-live")) {
         mode=MODE_LIVE;seconds=argc>2?atoi(argv[2]):60;
     } else if(argc>1&&!strcmp(argv[1],"--kws-capture")) {
@@ -1048,6 +1117,7 @@ int main(int argc,char **argv) {
     }
     {
         int i;
+        for(i=1;i<argc;i++)if(!strcmp(argv[i],"--no-aec"))disable_aec=1;
         for(i=1;i+1<argc;i++) {
             if(!strcmp(argv[i],"--listen-once"))g_listen_once=1;
             if(!strcmp(argv[i],"--daemon"))g_daemon_pidfile=argv[i+1];
@@ -1105,7 +1175,8 @@ int main(int argc,char **argv) {
         void *sp=dlopen("libspeexdsp.so.1",RTLD_NOW|RTLD_LOCAL);
         if(!sp){printf("speex_dlopen_failed=%s\n",dlerror());return 1;}
         void *(*einit)(int,int)=(void *(*)(int,int))dlsym(sp,"speex_echo_state_init");
-        int (*ectl)(void *,int,void *)=(int (*)(void *,int,void *))dlsym(sp,"speex_echo_state_ctl");
+        int (*ectl)(void *,int,void *)=(int (*)(void *,int,void *))dlsym(sp,"speex_echo_ctl");
+        if(!ectl)ectl=(int (*)(void *,int,void *))dlsym(sp,"speex_echo_state_ctl");
         int (*ecancel)(void *,const short *,const short *,short *)=(int (*)(void *,const short *,const short *,short *))dlsym(sp,"speex_echo_cancellation");
         void *(*pinit)(int,int)=(void *(*)(int,int))dlsym(sp,"speex_preprocess_state_init");
         int (*pctl)(void *,int,void *)=(int (*)(void *,int,void *))dlsym(sp,"speex_preprocess_ctl");
@@ -1114,7 +1185,8 @@ int main(int argc,char **argv) {
             !!einit,!!ecancel,!!pinit,!!pctl,!!prun);return 1;}
         void *st=einit(128,4096);int rate=16000;
         if(!st){puts("speex_init_failed");return 1;}
-        if(ectl)ectl(st,24,&rate);else puts("speex_ctl_missing_default_rate=8000");
+        if(ectl){if(ectl(st,24,&rate))puts("speex_rate_ctl_failed");else puts("speex_rate=16000");}
+        else puts("speex_ctl_missing_default_rate=8000");
         void *pp=pinit(128,16000);
         if(!pp||pctl(pp,24,st)){puts("speex_pp_failed");return 1;}
         void *pcm=NULL;static short raw[384*8*2];int32_t *buf=(int32_t *)raw;
@@ -1140,6 +1212,79 @@ int main(int argc,char **argv) {
         printf("aec frames=%ld mic_rms=%.0f out_rms=%.0f ref_rms=%.0f ratio=%.2f\n",
             blocks*128,sm/(double)(blocks*128),so/(double)(blocks*128),sr/(double)(blocks*128),
             so>0?sm/so:0.0);
+        return 0;
+    }
+    if(argc==3&&!strcmp(argv[1],"--mic-compare")) {
+        /* Score the same captured speech through several capture variants so a
+           missed wake can be attributed to the microphone mix, the echo
+           canceller or the preprocessor. Audio stays in memory. */
+        int secs=atoi(argv[2]);if(secs<5||secs>30)secs=15;
+        void *sp=dlopen("libspeexdsp.so.1",RTLD_NOW|RTLD_LOCAL);
+        if(!sp){printf("speex_dlopen_failed=%s\n",dlerror());return 1;}
+        void *(*einit)(int,int)=(void *(*)(int,int))dlsym(sp,"speex_echo_state_init");
+        int (*ecancel)(void *,const short *,const short *,short *)=(int (*)(void *,const short *,const short *,short *))dlsym(sp,"speex_echo_cancellation");
+        void *(*pinit)(int,int)=(void *(*)(int,int))dlsym(sp,"speex_preprocess_state_init");
+        int (*pctl)(void *,int,void *)=(int (*)(void *,int,void *))dlsym(sp,"speex_preprocess_ctl");
+        int (*prun)(void *,short *)=(int (*)(void *,short *))dlsym(sp,"speex_preprocess_run");
+        int (*ectl)(void *,int,void *)=(int (*)(void *,int,void *))dlsym(sp,"speex_echo_ctl");
+        if(!ectl)ectl=(int (*)(void *,int,void *))dlsym(sp,"speex_echo_state_ctl");
+        if(!einit||!ecancel||!pinit||!pctl||!prun){puts("speex_symbols_missing");return 1;}
+        void *st=einit(128,4096),*st2=einit(128,4096),*st3=einit(128,4096),*st4=einit(128,4096);
+        void *pp=pinit(128,16000),*pp2=pinit(128,16000);
+        if(!st||!st2||!st3||!st4||!pp||!pp2||pctl(pp,24,st)||pctl(pp2,24,st3)){puts("speex_init_failed");return 1;}
+        if(ectl){int rate=16000;ectl(st,24,&rate);ectl(st2,24,&rate);ectl(st3,24,&rate);ectl(st4,24,&rate);}
+        static int32_t raw[480*8];
+        void *pcm=NULL;
+        if(g_alsa.open(&pcm,"Capture",1,0)){puts("compare_open_failed");return 1;}
+        if(g_alsa.set_params(pcm,10,3,8,48000,0,200000)){puts("compare_params_failed");g_alsa.close(pcm);return 1;}
+        int total=secs*RATE_IN,i,c,f;
+        short *buf[11];double sums[11]={0};
+        const char *names[11]={"ch0","ch1","ch2","ch3","ch4","ch5","mix6",
+            "ch0_aec_pp","ch0_aec","mix6_aec_pp","mix6_aec"};
+        for(i=0;i<11;i++){buf[i]=calloc((size_t)total,sizeof(short));if(!buf[i]){puts("compare_alloc_failed");return 1;}}
+        short f8[9][128],ref[128],out[128],out2[128],out3[128],out4[128];
+        long acc[6]={0,0,0,0,0,0},accmix=0,accref=0;
+        int cnt=0,fill=0,outn=0;
+        while(outn<total) {
+            long got=0;
+            while(got<480) {
+                long r=g_alsa.readi(pcm,raw+got*8,(unsigned long)(480-got));
+                if(r<0){if(g_alsa.recover(pcm,(int)r,1)<0)break;continue;}
+                if(!r)continue;
+                got+=r;
+            }
+            if(got<480)break;
+            for(f=0;f<480;f++) {
+                int32_t *fr=raw+f*8;
+                for(c=0;c<6;c++){acc[c]+=fr[c];accmix+=fr[c];}
+                accref+=fr[6];
+                if(++cnt<3)continue;
+                for(c=0;c<6;c++)f8[c][fill]=(short)((acc[c]/3)>>16);
+                f8[6][fill]=(short)((accmix/18)>>16);
+                f8[7][fill]=(short)((acc[0]/3)>>16);
+                ref[fill]=(short)((accref/3)>>16);
+                for(c=0;c<6;c++)acc[c]=0;
+                accmix=0;accref=0;cnt=0;
+                if(++fill<128)continue;
+                for(c=0;c<7;c++)memcpy(buf[c]+outn,f8[c],sizeof(f8[c]));
+                ecancel(st,f8[7],ref,out);prun(pp,out);memcpy(buf[7]+outn,out,sizeof(out));
+                ecancel(st2,f8[7],ref,out2);memcpy(buf[8]+outn,out2,sizeof(out2));
+                ecancel(st3,f8[6],ref,out3);prun(pp2,out3);memcpy(buf[9]+outn,out3,sizeof(out3));
+                ecancel(st4,f8[6],ref,out4);memcpy(buf[10]+outn,out4,sizeof(out4));
+                outn+=128;fill=0;
+            }
+        }
+        g_alsa.close(pcm);
+        if(outn<=0){puts("compare_no_frames");return 1;}
+        for(i=0;i<11;i++)for(f=0;f<outn;f++)sums[i]+=(double)buf[i][f]*buf[i][f];
+        for(i=0;i<11;i++) {
+            struct kws_measure m;
+            kws_measure(buf[i],outn,&m);
+            printf("compare stream=%s best=%.4f wakes=%d scored=%d ms=%.0f\n",
+                names[i],(double)m.best,m.wakes,m.scored,sums[i]/(double)outn);
+            free(buf[i]);
+        }
+        fflush(stdout);
         return 0;
     }
     if(argc==3&&!strcmp(argv[1],"--afe-channels")) {
@@ -1172,9 +1317,34 @@ int main(int argc,char **argv) {
         free(pcm);
         return 0;
     }
-    if(g_alsa.open(&capture,"mico_record",1,0)){puts("capture open failed");goto cleanup;}
-    if(g_alsa.set_params(capture,2,3,1,RATE_IN,1,100000)) {
-        puts("alsa capture set_params failed");goto cleanup;
+    {
+        struct lx_capture_alsa cops={g_alsa.open,g_alsa.set_params,g_alsa.readi,g_alsa.recover,g_alsa.close};
+        if(lx_capture_open(&capture,&cops,!disable_aec,RATE_IN)) {
+            puts("capture open failed");goto cleanup;
+        }
+        capture_ready=1;
+    }
+
+    if(mode==MODE_WAKE_AUDIT) {
+        struct lx_kws *ref=calloc(1,sizeof(*ref));
+        kws=calloc(1,sizeof(*kws));
+        if(!ref||!kws){free(ref);goto cleanup;}
+        if(!capture.aec){puts("wake_audit_requires_reference");free(ref);goto cleanup;}
+        lx_kws_init(kws);lx_kws_init(ref);
+        lx_kws_threshold_override=15.0f;
+        struct wake_audit_ctx audit={ref,0};short mic[FRAME_IN];
+        int64_t until=now_ms()+(int64_t)seconds*1000;
+        puts("wake_audit=no_cloud_no_playback_control_no_audio_files");fflush(stdout);
+        while(!g_stop&&now_ms()<until) {
+            long got=lx_capture_read(&capture,mic,FRAME_IN);
+            if(got<0){if(lx_capture_recover(&capture,got)<0)break;continue;}
+            if(!got)continue;
+            lx_kws_push(ref,capture.reference_read,(int)got,NULL,NULL);
+            lx_kws_push(kws,mic,(int)got,wake_audit_report,&audit);
+            kws->woke=0;ref->woke=0;
+        }
+        printf("wake_audit_done windows=%d candidates=%d\n",kws->evals,audit.candidates);
+        free(ref);result=0;goto cleanup;
     }
 
     if(mode==MODE_CAPTURE) {
@@ -1188,8 +1358,11 @@ int main(int argc,char **argv) {
         printf("stage=capture seconds=%d\n",seconds);fflush(stdout);
         stop=now_ms()+(int64_t)(seconds+3)*1000;
         while(got<want&&now_ms()<stop) {
-            long r=g_alsa.readi(capture,buffer+got,(unsigned long)(want-got));
-            if(r<0){if(g_alsa.recover(capture,(int)r,1)<0)break;continue;}
+            int take=want-got;
+            long r;
+            if(take>FRAME_IN)take=FRAME_IN;
+            r=lx_capture_read(&capture,buffer+got,take);
+            if(r<0){if(lx_capture_recover(&capture,r)<0)break;continue;}
             if(!r)continue;
             got+=(int)r;
         }
@@ -1204,7 +1377,7 @@ int main(int argc,char **argv) {
         kws=calloc(1,sizeof(*kws));
         if(!kws){puts("kws alloc failed");goto cleanup;}
         lx_kws_init(kws);
-        kws_listen(capture,kws,seconds,0,NULL);
+        kws_listen(&capture,kws,seconds,0,NULL);
         result=0;
         goto cleanup;
     }
@@ -1268,7 +1441,7 @@ int main(int argc,char **argv) {
             result=0;
             goto cleanup;
         }
-        result=run_session(&a,crypto,json,key,capture,mode,seconds,preroll,LX_KWS_PREROLL,NULL,NULL);
+        result=run_session(&a,crypto,json,key,&capture,mode,seconds,preroll,LX_KWS_PREROLL,NULL,NULL);
         goto cleanup;
     }
 
@@ -1293,7 +1466,7 @@ int main(int argc,char **argv) {
         while(!g_stop) {
             publish_state("standby");
             printf("stage=standby seconds=%d\n",seconds);fflush(stdout);
-            if(!g_listen_once&&!kws_listen(capture,kws,seconds,0,preroll)) {
+            if(!g_listen_once&&!kws_listen(&capture,kws,seconds,0,preroll)) {
                 if(g_stop){puts("standby_stopped=signal");result=0;break;}
                 if(g_daemon_pidfile){puts("standby_window_renewed");continue;}
                 puts("standby_timeout no_wake");result=3;break;
@@ -1326,7 +1499,7 @@ int main(int argc,char **argv) {
             if(music_paused){puts("music_paused_for_listening=1");fflush(stdout);}
             feedback_led(1);feedback_ack();if(!g_stop)feedback_led(2);
             int resume_music=0;
-            result=g_stop?0:run_session(&a,crypto,json,key,capture,mode,seconds,preroll,LX_KWS_PREROLL,&resume_music,kws);
+            result=g_stop?0:run_session(&a,crypto,json,key,&capture,mode,seconds,preroll,LX_KWS_PREROLL,&resume_music,kws);
             if(music_paused&&resume_music&&!g_stop) {
                 void *r=tb_request("music.resume",tj.object(),now_ms()+1500);
                 if(r){puts("music_resumed_after_session=1");fflush(stdout);tj.put(r);}
@@ -1341,12 +1514,12 @@ int main(int argc,char **argv) {
     }
 
     if(!read_key(key,sizeof(key))){fputs("missing api key\n",stderr);result=2;goto cleanup;}
-    result=run_session(&a,crypto,json,key,capture,mode,seconds,NULL,0,NULL,NULL);
+    result=run_session(&a,crypto,json,key,&capture,mode,seconds,NULL,0,NULL,NULL);
 
 cleanup:
     publish_state("stopping");
     feedback_led(0);
-    if(capture)g_alsa.close(capture);
+    if(capture_ready)lx_capture_close(&capture);
     free(kws);
     { volatile char *wipe=key;for(size_t k=0;k<sizeof(key);k++)wipe[k]=0; }
     if(curl)dlclose(curl);if(crypto)dlclose(crypto);if(json)dlclose(json);if(g_alsa.lib)dlclose(g_alsa.lib);

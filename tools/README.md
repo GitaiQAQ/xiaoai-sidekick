@@ -29,6 +29,7 @@ Expand-Archive vendor\downloads\pyelftools-0.31-py3-none-any.whl -DestinationPat
 |---|---|---|
 | 输入获取 | `Fetch-Inputs.ps1` | 下载公开固件 squashfs 并按记录的 SHA256 校验 |
 | 构建 | `Build-NativeGlibc.ps1`、`Build-NativeProbe.ps1` | ARM/glibc 原生程序构建与 ELF 检查 |
+| 原厂唤醒取证 | `Build-WakeProbes.ps1`、`native-wake-dependencies.py` | 构建固定字段只读探针与隔离引擎探针；核对固件导入符号所有者。引擎探针须经原厂 loader 运行，未接生产服务 |
 | 设备操作 | `Invoke-LX06.ps1`、`Manage-LX06Service.ps1`、`Manage-LX06Web.ps1`、`Invoke-DoubaoSmoke.ps1`、`Invoke-ArkSmoke.ps1` | SSH 执行、语音/Web 服务安装与启动、实时会话冒烟 |
 | 唤醒 | `kws-build-templates.py`、`kws-tune.ps1`、`Check-KwsReplay.py` | 模板生成、阈值调优、回放评分 |
 | 分析 | `analyze-native-wakeup.py`、`annotate-native-arm.py`、`dump-native-functions.py`、`native-*.py` | 从 `temp/rootfs-*` 提取符号、反汇编、协议/模型证据，写入 `temp/analysis/` |

@@ -317,6 +317,9 @@ int main(int argc,char **argv){
  signal(SIGTERM,stop_web);signal(SIGINT,stop_web);signal(SIGPIPE,SIG_IGN);
  if(fgets(voice_key,sizeof(voice_key),stdin))voice_key[strcspn(voice_key,"\r\n")]=0;
  for(size_t i=0;voice_key[i];i++)if((unsigned char)voice_key[i]<33||(unsigned char)voice_key[i]>126)return 2;
+ /* The key is read once. A daemon child that keeps the SSH stdin pipe open
+    prevents the launching session from closing, so detach it here. */
+ if(daemon){int devnull=open("/dev/null",O_RDONLY);if(devnull>=0){dup2(devnull,0);if(devnull>2)close(devnull);}}
  int random=open("/dev/urandom",O_RDONLY);unsigned char nonce[16];if(random<0||read(random,nonce,sizeof(nonce))!=(ssize_t)sizeof(nonce))return 1;close(random);for(unsigned i=0;i<16;i++)snprintf(csrf+i*2,3,"%02x",nonce[i]);
  void *json=dlopen("libjson-c.so.2",RTLD_NOW|RTLD_LOCAL);if(!json||lx_music_init(json)||nc_init())return 1;
  int sock=socket(AF_INET,SOCK_STREAM,0),one=1;struct sockaddr_in addr={0};if(sock<0)return 1;fcntl(sock,F_SETFD,FD_CLOEXEC);setsockopt(sock,SOL_SOCKET,SO_REUSEADDR,&one,sizeof(one));
