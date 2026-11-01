@@ -49,6 +49,7 @@
 | 18 补丁 | `.agents/notes/reports/歌单列表大响应修复-第十九轮.md` | 歌单接口 728 KiB 响应与接收上限 |
 | 20 | `.agents/notes/reports/Agent循环与工具注册表-第二十轮.md` | 工具注册表、provider/host 循环、会话截止 |
 | 21 | `.agents/notes/reports/语音交互调优与回声消除逆向-第二十一轮.md` | 会话结束、应答音色、音量、唤醒策略、打断、AEC 逆向 |
+| 26–28 | `.agents/notes/reports/本地302直链刷新与原生循环-第二十六至二十八轮.md` | 本机 302、600 首队列、原生 SEQUENCE 循环、直链过期修复 |
 
 ## 材料与工具
 

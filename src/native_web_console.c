@@ -71,7 +71,7 @@ static int write_all(int fd,const void *buffer,size_t n){const char *p=buffer;wh
 static void respond(int fd,int code,const char *type,const char *body,size_t n){
  char head[1024];int size=snprintf(head,sizeof(head),
  "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'\r\n\r\n",
- code,code==200?"OK":code==400?"Bad Request":code==403?"Forbidden":code==404?"Not Found":code==409?"Conflict":code==503?"Service Unavailable":"Error",type,n);
+ code,code==200?"OK":code==400?"Bad Request":code==401?"Unauthorized":code==403?"Forbidden":code==404?"Not Found":code==409?"Conflict":code==502?"Bad Gateway":code==503?"Service Unavailable":"Error",type,n);
  if(size>0&&(size_t)size<sizeof(head)&&!write_all(fd,head,(size_t)size))write_all(fd,body,n);
 }
 static void json_reply(int fd,int code,void *obj){
@@ -79,6 +79,32 @@ static void json_reply(int fd,int code,void *obj){
  const char *s=mj.encode(obj);respond(fd,code,"application/json; charset=utf-8",s,strlen(s));mj.put(obj);
 }
 static void error_reply(int fd,int code,const char *name){void *o=mj.object();add_i(o,"ok",0);add_s(o,"error",name);json_reply(fd,code,o);}
+static int peer_is_loopback(int fd){struct sockaddr_in a;socklen_t n=sizeof(a);if(getpeername(fd,(struct sockaddr *)&a,&n))return 0;return a.sin_family==AF_INET&&(ntohl(a.sin_addr.s_addr)&0xff000000u)==0x7f000000u;}
+static int path_decode(char *s){
+ char *o=s;for(char *p=s;*p;){if(*p=='%'&&isxdigit((unsigned char)p[1])&&isxdigit((unsigned char)p[2])){int hi=p[1]<='9'?p[1]-'0':(p[1]|32)-'a'+10;int lo=p[2]<='9'?p[2]-'0':(p[2]|32)-'a'+10;*o++=(char)(hi*16+lo);p+=3;}else *o++=*p++;}
+ *o=0;return 0;
+}
+static void redirect_reply(int fd,const char *url){
+ char head[1200];int n=snprintf(head,sizeof(head),"HTTP/1.1 302 Found\r\nLocation: %s\r\nContent-Length: 0\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n",url);
+ if(n>0&&(size_t)n<sizeof(head))write_all(fd,head,(size_t)n);
+}
+/* /r/<provider>/<track-id>/<quality>.<ext> is stable for the lifetime of the
+   factory queue. Resolve only after the player opens it, never at enqueue time. */
+static void stream_redirect(int fd,const char *path){
+ char work[192];char *s1,*s2,*dot,*provider,*id,*quality,*ext;
+ if(!peer_is_loopback(fd)){error_reply(fd,403,"local_only");return;}
+ if(strlen(path)>=sizeof(work)||strncmp(path,"/r/",3)||strchr(path,'?')||strchr(path,'#')){error_reply(fd,400,"invalid_stream_path");return;}
+ snprintf(work,sizeof(work),"%s",path);s1=strchr(work+3,'/');if(!s1){error_reply(fd,400,"invalid_stream_path");return;}*s1=0;s2=strchr(s1+1,'/');if(!s2){error_reply(fd,400,"invalid_stream_path");return;}*s2=0;dot=strrchr(s2+1,'.');if(!dot||dot==s2+1||strchr(dot+1,'/')){error_reply(fd,400,"invalid_stream_path");return;}*dot=0;
+ provider=work+3;id=s1+1;quality=s2+1;ext=dot+1;path_decode(provider);path_decode(id);
+ if(strcmp(provider,"netease")){error_reply(fd,404,"unknown_provider");return;}
+ size_t idlen=strlen(id);if(idlen<1||idlen>19){error_reply(fd,400,"invalid_track_id");return;}for(size_t i=0;i<idlen;i++)if(id[i]<'0'||id[i]>'9'){error_reply(fd,400,"invalid_track_id");return;}
+ if(strcmp(quality,"standard")&&strcmp(quality,"exhigh")&&strcmp(quality,"lossless")){error_reply(fd,400,"invalid_quality");return;}
+ if(strcmp(ext,!strcmp(quality,"lossless")?"flac":"mp3")){error_reply(fd,400,"invalid_format");return;}
+ char url[901];int rc=nc_resolve_stream_url(id,quality,url,sizeof(url));
+ printf("stream_redirect provider=%s id=%s quality=%s rc=%d\n",provider,id,quality,rc);fflush(stdout);
+ if(rc){error_reply(fd,rc==2?401:503,rc==2?"login_required":"stream_unavailable");return;}
+ redirect_reply(fd,url);
+}
 static int read_file(const char *path,char *out,size_t cap){FILE *f=fopen(path,"r");if(!f)return -1;size_t n=fread(out,1,cap-1,f);int bad=ferror(f)||(!feof(f)&&n==cap-1);fclose(f);out[n]=0;return bad?-1:(int)n;}
 static int agent_pid(void){
  FILE *f=fopen("/data/lx06-agent/lx06.pid","r");long pid=0;char path[96],cmd[512];
@@ -115,7 +141,7 @@ static void *ubus_info(const char *object,const char *method){
 }
 static void *build_state(void){
  void *root=mj.object(),*device=mj.object(),*voice=mj.object(),*music=mj.object(),*lamp=mj.object(),*account=mj.object(),*recent=mj.array();
- int pid=agent_pid();char raw[8192];
+ int pid=agent_pid();char raw[32768];
  add_i(root,"ok",1);add_s(root,"csrf",csrf);add_i(root,"version",1);add_i(root,"v",1);add_s(root,"type","state.snapshot");
  add_s(device,"name","小爱音箱 Pro");add_s(device,"model","LX06");add_i(device,"web_pid",(int)getpid());
  add_i(device,"uptime_seconds",(int)(lx_music_ms()/1000));add_i(device,"web_uptime_seconds",(int)((lx_music_ms()-started)/1000));
@@ -188,7 +214,7 @@ static void *action_execute(void *obj,const char **action_out,int *code_out,cons
  else if(!strcmp(action,"voice_stop")){rc=stop_agent();if(rc)code=409;}
  else if(!strcmp(action,"music_pause")){nc_pending_ticket[0]=nc_pending_url[0]=0;nc_pending_count=0;rc=lx_music_dispatch("{\"op\":\"pause\"}",reply,sizeof(reply));}
  else if(!strcmp(action,"music_status")){
-  char raw[8192];int status=-1;if(!lx_music_state(raw,sizeof(raw),NULL)){void *state=mj.parse(raw);if(state){lx_music_number(state,"status",&status);mj.put(state);}}
+  char raw[32768];int status=-1;if(!lx_music_state(raw,sizeof(raw),NULL)){void *state=mj.parse(raw);if(state){lx_music_number(state,"status",&status);mj.put(state);}}
   out=mj.object();add_i(out,"ok",status>=0);add_i(out,"status",status);add_s(out,"action",action);if(status<0)add_s(out,"error","state_unavailable");
   audit(action,status>=0);return out;
  }
@@ -203,7 +229,7 @@ static void *action_execute(void *obj,const char **action_out,int *code_out,cons
  }else if(!strcmp(action,"music_play")){
   void *url=NULL;if(mj.get(obj,"url",&url)&&mj.type(url)==6&&(size_t)mj.length(url)==strlen(mj.string(url)))rc=lx_music_play_url(mj.string(url),reply,sizeof(reply));else code=400;
  }else if(!strcmp(action,"volume")){
-  int volume=-1;char args[160],raw[8192];
+  int volume=-1;char args[160],raw[32768];
   if(!lx_music_number(obj,"value",&volume)||volume<0||volume>100)code=400;
   else{
    snprintf(args,sizeof(args),"{\"volume\":%d,\"beep\":0,\"tts_silence\":true}",volume);rc=lx_music_ubus("player_set_volume",args,raw,sizeof(raw))||!lx_music_reply_ok(raw);
@@ -285,7 +311,8 @@ static void handle_connection(int fd){
  snprintf(origin,sizeof(origin),"http://%s",host);
  }
  while(used<head+r.length&&lx_music_ms()<until){ssize_t n=recv(fd,buffer+used,head+r.length-used,0);if(n<=0)break;used+=(size_t)n;}if(used!=head+r.length){error_reply(fd,400,"incomplete_body");return;}buffer[used]=0;
- if(!local_tool_request&&!strcmp(r.method,"GET")&&!r.length){if(!strcmp(r.path,"/api/state")||!strcmp(r.path,"/api/v1/state"))state_reply(fd);else if(!strcmp(r.path,"/api/v1/events"))event_reply(fd);else static_reply(fd,r.path);return;}
+ if(!local_tool_request&&!strcmp(r.method,"HEAD")&&!r.length&&!strncmp(r.path,"/r/",3)){stream_redirect(fd,r.path);return;}
+ if(!local_tool_request&&!strcmp(r.method,"GET")&&!r.length){if(!strncmp(r.path,"/r/",3)){stream_redirect(fd,r.path);return;}if(!strcmp(r.path,"/api/state")||!strcmp(r.path,"/api/v1/state"))state_reply(fd);else if(!strcmp(r.path,"/api/v1/events"))event_reply(fd);else static_reply(fd,r.path);return;}
  if(!strcmp(r.method,"POST")&&(!strcmp(r.path,"/api/action")||!strcmp(r.path,"/api/v1/command"))){
   if(!local_tool_request&&(strcmp(r.origin,origin)||strcmp(r.token,csrf))){error_reply(fd,403,"origin_or_token_rejected");return;}
   if(local_tool_request&&strcmp(r.path,"/api/v1/command")){error_reply(fd,403,"tool_path_rejected");return;}

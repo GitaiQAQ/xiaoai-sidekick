@@ -33,7 +33,7 @@ struct lx_music_json {
  const char *(*encode)(void *);
 };
 static struct lx_music_json mj;
-#define LX_MUSIC_QUEUE_MAX 32
+#define LX_MUSIC_QUEUE_MAX 600
 struct lx_music_track {char audio_id[48],title[256],artist[256];};
 static struct lx_music_track lx_music_queue[LX_MUSIC_QUEUE_MAX];
 static int lx_music_queue_count;
@@ -50,7 +50,7 @@ static int lx_music_init(void *lib){
 }
 static int64_t lx_music_ms(void){struct timespec t;if(clock_gettime(CLOCK_MONOTONIC,&t))return -1;return (int64_t)t.tv_sec*1000+t.tv_nsec/1000000;}
 static int lx_music_ubus_object(const char *object,const char *method,const char *args,char *out,size_t cap){
- int fds[2],status=0,failed=0;pid_t pid;size_t used=0;int64_t until=lx_music_ms()+2500;
+ int fds[2],status=0,failed=0;pid_t pid;size_t used=0;int64_t until=lx_music_ms()+8000;
  if(pipe(fds))return 1;
  pid=fork();
  if(pid==0){
@@ -79,7 +79,7 @@ static int lx_music_number(void *obj,const char *key,int *number){void *v=NULL;i
 /* Only the numbers needed for control leave the factory reply. URL, cookies,
    account information and other metadata are never returned to the model. */
 static int lx_music_state(char *out,size_t cap,int *status_out){
- char raw[8192];void *root=NULL,*info=NULL,*nested=NULL,*detail=NULL,*audio=NULL;int status=-1,volume=-1,loop=-1,code=-1,position=-1,duration=-1,current=-1;
+ char raw[32768];void *root=NULL,*info=NULL,*nested=NULL,*detail=NULL,*audio=NULL;int status=-1,volume=-1,loop=-1,code=-1,position=-1,duration=-1,current=-1;
  if(lx_music_ubus("player_get_play_status","{}",raw,sizeof(raw)))return 1;
  root=mj.parse(raw);if(!root||mj.type(root)!=4)goto fail;
  if(!lx_music_number(root,"code",&code)||code!=0||!mj.get(root,"info",&info))goto fail;
@@ -99,7 +99,7 @@ fail:
 }
 static int lx_music_reply_ok(const char *raw){void *obj=mj.parse(raw);int code=-1;int ok=obj&&mj.type(obj)==4&&lx_music_number(obj,"code",&code)&&!code;if(obj)mj.put(obj);return ok;}
 static int lx_music_control(const char *action,char *out,size_t cap){
- const char *factory;int expected;char raw[8192],args[128],state[512];int status=-1;
+ const char *factory;int expected;char raw[32768],args[128],state[512];int status=-1;
  if(!strcmp(action,"pause")){factory="pause";expected=2;}
  else if(!strcmp(action,"resume")){factory="play";expected=1;}
  else if(!strcmp(action,"stop")){factory="stop";expected=3;}
@@ -112,27 +112,37 @@ static int lx_music_control(const char *action,char *out,size_t cap){
 /* User explicitly accepts playback URLs in factory logs. Direct HTTP(S)
    avoids an unnecessary proxy; account cookies are never added to a URL. */
 static int lx_music_play_queue(const char **urls,const struct lx_music_track *tracks,int count,const char *playlist,char *out,size_t cap){
- char raw[8192],state[512];int status=-1;void *args;
+ char raw[32768],state[512];int status=-1;
  if(!urls||!tracks||count<1||count>LX_MUSIC_QUEUE_MAX||!playlist||strlen(playlist)>255)return 1;
- void *message=mj.object(),*payload=mj.object(),*items=mj.array();
  for(int i=0;i<count;i++){
-  const char *url=urls[i];if(!url||(strncmp(url,"http://",7)&&strncmp(url,"https://",8))||strlen(url)>900||!tracks[i].audio_id[0]){mj.put(message);return 1;}
-  const char *authority=strstr(url,"://")+3,*slash=strchr(authority,'/');if(!*authority||strchr(authority,'@')||(!slash&&strpbrk(authority,"?#"))){mj.put(message);return 1;}
-  for(const unsigned char *p=(const unsigned char *)url;*p;p++)if(*p<33||*p>126||*p=='"'||*p=='\\'||*p=='#'){mj.put(message);return 1;}
-  void *item=mj.object(),*id=mj.object(),*cp=mj.object(),*stream=mj.object();mj.add(cp,"id",mj.new_string("lx06-agent"));mj.add(cp,"name",mj.new_string("lx06-agent"));
-  mj.add(id,"audio_id",mj.new_string(tracks[i].audio_id));mj.add(id,"cp",cp);mj.add(stream,"url",mj.new_string(url));mj.add(stream,"offset_in_ms",mj.new_int(0));mj.add(stream,"duration_in_ms",mj.new_int(0));mj.add(item,"item_id",id);mj.add(item,"stream",stream);mj.append(items,item);
+  const char *url=urls[i];if(!url||(strncmp(url,"http://",7)&&strncmp(url,"https://",8))||strlen(url)>=160||!tracks[i].audio_id[0])return 1;
+  const char *authority=strstr(url,"://")+3,*slash=strchr(authority,'/');if(!*authority||strchr(authority,'@')||(!slash&&strpbrk(authority,"?#")))return 1;
+  for(const unsigned char *p=(const unsigned char *)url;*p;p++)if(*p<33||*p>126||*p=='"'||*p=='\\'||*p=='#')return 1;
  }
- mj.add(payload,"audio_type",mj.new_string("MUSIC"));mj.add(payload,"play_behavior",mj.new_string("REPLACE_ALL"));mj.add(payload,"audio_items",items);
- mj.add(message,"payload",payload);mj.add(message,"play_mode",mj.new_string("LoopSequence"));
- args=mj.object();mj.add(args,"music",mj.new_string(mj.encode(message)));mj.add(args,"media",mj.new_string("common"));
- int bad=lx_music_ubus("player_play_music",mj.encode(args),raw,sizeof(raw));mj.put(args);mj.put(message);
- if(bad||!lx_music_reply_ok(raw))return 1;
+ /* A single ubus argv is limited; send 300-item chunks. APPEND starts at
+    the appended chunk on this firmware, so reset to index 0 afterwards. */
+ const int chunk=300;
+ for(int start=0;start<count;start+=chunk){  int end=start+chunk;if(end>count)end=count;
+  void *message=mj.object(),*payload=mj.object(),*items=mj.array();
+  for(int i=start;i<end;i++){
+   void *item=mj.object(),*id=mj.object(),*cp=mj.object(),*stream=mj.object();mj.add(cp,"id",mj.new_string("lx06-agent"));mj.add(cp,"name",mj.new_string("lx06-agent"));
+   mj.add(id,"audio_id",mj.new_string(tracks[i].audio_id));mj.add(id,"cp",cp);mj.add(stream,"url",mj.new_string(urls[i]));mj.add(stream,"offset_in_ms",mj.new_int(0));mj.add(stream,"duration_in_ms",mj.new_int(0));mj.add(item,"item_id",id);mj.add(item,"stream",stream);mj.append(items,item);
+  }
+  mj.add(payload,"audio_type",mj.new_string("MUSIC"));mj.add(payload,"play_behavior",mj.new_string(start?"APPEND":"REPLACE_ALL"));mj.add(payload,"audio_items",items);
+  /* Factory naming is inverted: "SEQUENCE" loops the list, while
+     "LoopSequence" stops after the last item. */
+  mj.add(message,"payload",payload);mj.add(message,"play_mode",mj.new_string("SEQUENCE"));
+  void *args=mj.object();mj.add(args,"music",mj.new_string(mj.encode(message)));mj.add(args,"media",mj.new_string("common"));
+  int bad=lx_music_ubus("player_play_music",mj.encode(args),raw,sizeof(raw));mj.put(args);mj.put(message);
+  if(bad||!lx_music_reply_ok(raw))return 1;
+ }
+ if(count>chunk){char idx[64];snprintf(idx,sizeof(idx),"{\"index\":0,\"media\":\"common\"}");if(lx_music_ubus("player_play_index",idx,raw,sizeof(raw))||!lx_music_reply_ok(raw))return 1;}
  lx_music_queue_count=count;snprintf(lx_music_playlist,sizeof(lx_music_playlist),"%s",playlist);for(int i=0;i<count;i++)lx_music_queue[i]=tracks[i];
- for(int i=0;i<15;i++){if(!lx_music_state(state,sizeof(state),&status)&&status==1){snprintf(out,cap,"{\"ok\":true,\"status\":1,\"queue_total\":%d}",count);return 0;}usleep(100000);}
+ for(int i=0;i<50;i++){if(!lx_music_state(state,sizeof(state),&status)&&status==1){snprintf(out,cap,"{\"ok\":true,\"status\":1,\"queue_total\":%d}",count);return 0;}usleep(100000);}
  snprintf(out,cap,"{\"ok\":false,\"error\":\"playback_not_confirmed\",\"status\":%d}",status);return 1;
 }
 static int lx_music_play_url(const char *url,char *out,size_t cap){const char *urls[1]={url};struct lx_music_track track={0};snprintf(track.audio_id,sizeof(track.audio_id),"lx06-direct-stream");snprintf(track.title,sizeof(track.title),"网络音频流");return lx_music_play_queue(urls,&track,1,"网络音频流",out,cap);}
-static int lx_music_skip(int delta,char *out,size_t cap){char state[2048],args[128],raw[8192];if(!lx_music_queue_count||lx_music_state(state,sizeof(state),NULL))return 1;void *o=mj.parse(state),*v=NULL;int index=0;if(!o||!mj.get(o,"queue_index",&v)){if(o)mj.put(o);return 1;}index=mj.integer(v)-1;mj.put(o);index=(index+delta+lx_music_queue_count)%lx_music_queue_count;snprintf(args,sizeof(args),"{\"index\":%d,\"media\":\"common\"}",index);if(lx_music_ubus("player_play_index",args,raw,sizeof(raw))||!lx_music_reply_ok(raw))return 1;snprintf(out,cap,"{\"ok\":true,\"index\":%d}",index+1);return 0;}
+static int lx_music_skip(int delta,char *out,size_t cap){char state[2048],args[128],raw[32768];if(!lx_music_queue_count||lx_music_state(state,sizeof(state),NULL))return 1;void *o=mj.parse(state),*v=NULL;int index=0;if(!o||!mj.get(o,"queue_index",&v)){if(o)mj.put(o);return 1;}index=mj.integer(v)-1;mj.put(o);index=(index+delta+lx_music_queue_count)%lx_music_queue_count;snprintf(args,sizeof(args),"{\"index\":%d,\"media\":\"common\"}",index);if(lx_music_ubus("player_play_index",args,raw,sizeof(raw))||!lx_music_reply_ok(raw))return 1;snprintf(out,cap,"{\"ok\":true,\"index\":%d}",index+1);return 0;}
 static int lx_music_dispatch(const char *request,char *out,size_t cap){
  void *obj=mj.parse(request),*v=NULL;int rc=1;const char *op;
  snprintf(out,cap,"{\"ok\":false,\"error\":\"invalid_request_or_execution\"}");

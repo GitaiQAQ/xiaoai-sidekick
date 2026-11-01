@@ -5,7 +5,11 @@
 #define LX06_NETEASE_H
 #include <stdint.h>
 #include <curl/curl.h>
+#include <ctype.h>
 #include <sys/stat.h>
+#ifndef LX_MUSIC_QUEUE_MAX
+#define LX_MUSIC_QUEUE_MAX 100
+#endif
 extern int __fxstat64(int,int,struct stat64 *);
 static struct {
  void *curl_lib,*crypto;
@@ -20,9 +24,10 @@ static struct {
  int qr_code,authenticated,vip_type,last_api_code;int64_t qr_until,last_poll;
 } nc;
 #define NC_SESSION "/data/lx06-agent/netease.session"
+#define NC_STREAM_BASE "http://127.0.0.1:18080/r/"
 static char nc_pending_url[901],nc_pending_ticket[33];static int64_t nc_pending_until;
 static struct lx_music_track nc_pending_track;
-static char nc_pending_urls[20][901],nc_pending_playlist[256];static const char *nc_pending_urlptr[20];static struct lx_music_track nc_pending_queue[20];static int nc_pending_count;
+static char nc_pending_urls[LX_MUSIC_QUEUE_MAX][160],nc_pending_playlist[256];static const char *nc_pending_urlptr[LX_MUSIC_QUEUE_MAX];static struct lx_music_track nc_pending_queue[LX_MUSIC_QUEUE_MAX];static int nc_pending_count;
 static int nc_defer_play;
 static const char *nc_string(void *o,const char *k){void *v=NULL;if(!o||!mj.get(o,k,&v)||mj.type(v)!=6)return NULL;return mj.string(v);}
 static void nc_add_s(void *o,const char *k,const char *v){mj.add(o,k,mj.new_string(v));}
@@ -65,7 +70,7 @@ static int nc_encrypt(const char *path,const char *json,char *out,size_t cap){
 struct nc_response {char *data;size_t used,cap;int overflow;};
 /* Account playlist listings arrive in a provider variant that inlines each
    playlist's tracks and reaches several hundred KiB; keep a hard 1 MiB ceiling. */
-#define NC_RESPONSE_CAP (1024*1024)
+#define NC_RESPONSE_CAP (4*1024*1024)
 static size_t nc_receive(char *p,size_t a,size_t b,void *context){struct nc_response *r=context;if(b&&a>SIZE_MAX/b)return 0;size_t n=a*b;if(n>r->cap-1-r->used){r->overflow=1;return 0;}memcpy(r->data+r->used,p,n);r->used+=n;r->data[r->used]=0;return n;}
 static size_t nc_header(char *p,size_t a,size_t b,void *context){
  (void)context;if(b&&a>SIZE_MAX/b)return 0;size_t n=a*b;if(n>8192)return 0;
@@ -112,6 +117,51 @@ static int nc_refresh(void){
  nc.authenticated=0;
  if(ok){const char *nick=nc_string(profile,"nickname");if(nick)snprintf(nc.nickname,sizeof(nc.nickname),"%s",nick);if(mj.get(profile,"userId",&v))snprintf(nc.uid,sizeof(nc.uid),"%lld",(long long)mj.integer64(v));lx_music_number(profile,"vipType",&nc.vip_type);nc.authenticated=1;}
  if(o)mj.put(o);if(!ok&&!nc.error[0])snprintf(nc.error,sizeof(nc.error),"session_not_confirmed");return !ok;
+}
+/* Path segments are the only state carried by a queued URL. Percent-encode
+   provider-specific IDs so a future provider can use any opaque ID. */
+static int nc_url_segment(const char *in,char *out,size_t cap){
+ static const char hex[]="0123456789ABCDEF";size_t o=0;
+ if(!in||!out||!cap)return 1;
+ for(const unsigned char *p=(const unsigned char *)in;*p;p++){
+  if(isalnum(*p)||*p=='-'||*p=='_'||*p=='.'||*p=='~'){if(o+2>cap)return 1;out[o++]=(char)*p;}
+  else{if(o+4>cap)return 1;out[o++]='%';out[o++]=hex[*p>>4];out[o++]=hex[*p&15];}
+ }
+ out[o]=0;return 0;
+}
+static int nc_local_url(const char *audio_id,const char *quality,char *out,size_t cap){
+ if(!audio_id||!quality||!out||cap<32)return 1;
+ const char *sep=strchr(audio_id,'-');if(!sep||sep==audio_id||!sep[1])return 1;
+ size_t pn=(size_t)(sep-audio_id);if(pn<1||pn>24)return 1;
+ for(size_t i=0;i<pn;i++){unsigned char c=(unsigned char)audio_id[i];if(!(c>='a'&&c<='z')&&!(c>='0'&&c<='9')&&c!='_')return 1;}
+ if(strcmp(quality,"standard")&&strcmp(quality,"exhigh")&&strcmp(quality,"lossless"))return 1;
+ char provider[25],encoded[128];memcpy(provider,audio_id,pn);provider[pn]=0;
+ if(nc_url_segment(sep+1,encoded,sizeof(encoded)))return 1;
+ const char *ext=!strcmp(quality,"lossless")?"flac":"mp3";
+ int n=snprintf(out,cap,"%s%s/%s/%s.%s",NC_STREAM_BASE,provider,encoded,quality,ext);
+ return n<0||(size_t)n>=cap;
+}
+/* Resolve one account-entitled stream at request time. The returned URL is
+   short-lived; the caller must redirect immediately and must not queue it. */
+static int nc_resolve_stream_url(const char *id,const char *quality,char *out,size_t cap){
+ if(!id||!quality||!out||cap<32)return 1;
+ size_t n=strlen(id);if(n<1||n>19)return 1;
+ for(size_t i=0;i<n;i++)if(id[i]<'0'||id[i]>'9')return 1;
+ if(strcmp(quality,"standard")&&strcmp(quality,"exhigh")&&strcmp(quality,"lossless"))return 1;
+ if(!nc.authenticated&&nc.music_u[0])nc_refresh();
+ if(!nc.authenticated){snprintf(nc.error,sizeof(nc.error),"login_required");return 2;}
+ void *d=mj.object();char ids[40];snprintf(ids,sizeof(ids),"[%s]",id);nc_add_s(d,"ids",ids);nc_add_s(d,"level",quality);nc_add_s(d,"encodeType",!strcmp(quality,"lossless")?"flac":"mp3");
+ void *o=nc_request("/api/song/enhance/player/url/v1",d),*data=NULL,*track=NULL,*trial=NULL;const char *url=NULL;int code=-1,preview=0,rc=3;
+ if(o&&mj.get(o,"data",&data)&&mj.type(data)==5)track=mj.index(data,0);
+ if(track){url=nc_string(track,"url");preview=mj.get(track,"freeTrialInfo",&trial)&&mj.type(trial)!=0;lx_music_number(track,"code",&code);}
+ if(nc.last_api_code==200&&code==200&&url&&!preview&&strlen(url)<cap&&(strncmp(url,"http://",7)==0||strncmp(url,"https://",8)==0)){
+  int bad=0;const char *authority=strstr(url,"://")+3,*slash=strchr(authority,'/');
+  for(const unsigned char *p=(const unsigned char *)url;*p;p++)if(*p<33||*p>126||*p=='"'||*p=='\\'||*p=='#'){bad=1;break;}
+  if(!bad&&slash&&memchr(authority,'@',(size_t)(slash-authority)))bad=1;
+  if(!bad){snprintf(out,cap,"%s",url);rc=0;}
+ }
+ if(rc)snprintf(nc.error,sizeof(nc.error),preview?"preview_only":"stream_unavailable");
+ if(o)mj.put(o);return rc;
 }
 static void *nc_status(void){
  void *o=mj.object();nc_add_i(o,"ok",1);nc_add_s(o,"state",nc.authenticated?"logged_in":nc.music_u[0]?"session_saved":"logged_out");nc_add_i(o,"authenticated",nc.authenticated);nc_add_i(o,"session_saved",nc.music_u[0]!=0);nc_add_s(o,"nickname",nc.nickname);nc_add_s(o,"uid",nc.uid);nc_add_i(o,"vip_type",nc.vip_type);nc_add_s(o,"last_error",nc.error);nc_add_i(o,"api_code",nc.last_api_code);return o;
@@ -169,15 +219,15 @@ static void *nc_user_playlists(void){
  nc_add_i(out,"ok",ok);if(!ok)nc_add_s(out,"error",nc.error[0]?nc.error:"playlists_unavailable");mj.add(out,"items",items);if(o)mj.put(o);return out;
 }
 static void *nc_chart_tracks(const char *id){
- void *d=mj.object();nc_add_s(d,"id",id);nc_add_i(d,"n",20);nc_add_i(d,"s",0);
+ void *d=mj.object();nc_add_s(d,"id",id);nc_add_i(d,"n",LX_MUSIC_QUEUE_MAX);nc_add_i(d,"s",0);
  void *o=nc_request("/api/v6/playlist/detail",d),*playlist=NULL,*tracks=NULL,*out=mj.object(),*items=mj.array();
  int ok=o&&nc.last_api_code==200&&mj.get(o,"playlist",&playlist)&&mj.get(playlist,"tracks",&tracks)&&mj.type(tracks)==5;
- if(ok){const char *name=nc_string(playlist,"name");if(name)nc_add_s(out,"name",name);int n=mj.array_length(tracks);if(n>20)n=20;
+ if(ok){const char *name=nc_string(playlist,"name");if(name)nc_add_s(out,"name",name);int n=mj.array_length(tracks);if(n>LX_MUSIC_QUEUE_MAX)n=LX_MUSIC_QUEUE_MAX;
   for(int i=0;i<n;i++){void *song=mj.index(tracks,i),*ar=NULL;char sid[32],artist[256]="";const char *title=nc_string(song,"name");if(!nc_id(song,"id",sid)||!title)continue;
    if(mj.get(song,"ar",&ar)&&mj.type(ar)==5){int a=mj.array_length(ar);if(a>4)a=4;for(int j=0;j<a;j++){const char *s=nc_string(mj.index(ar,j),"name");if(s){size_t z=strlen(artist);snprintf(artist+z,sizeof(artist)-z,"%s%s",z?" / ":"",s);}}}
    void *item=mj.object();nc_add_s(item,"id",sid);nc_add_s(item,"title",title);nc_add_s(item,"artist",artist);nc_add_i(item,"rank",i+1);mj.append(items,item);
   }
- }nc_add_i(out,"ok",ok);mj.add(out,"items",items);nc_add_i(out,"limit",20);if(!ok)nc_add_s(out,"error",nc.error[0]?nc.error:"chart_unavailable");if(o)mj.put(o);return out;
+ }nc_add_i(out,"ok",ok);mj.add(out,"items",items);nc_add_i(out,"limit",LX_MUSIC_QUEUE_MAX);if(!ok)nc_add_s(out,"error",nc.error[0]?nc.error:"chart_unavailable");if(o)mj.put(o);return out;
 }
 static void *nc_play(const char *id,const char *quality,const char *title,const char *artist){
  nc_pending_ticket[0]=nc_pending_url[0]=0;nc_pending_count=0;
@@ -194,19 +244,22 @@ static void *nc_play(const char *id,const char *quality,const char *title,const 
  else{nc_add_i(out,"ok",0);nc_add_i(out,"api_code",nc.last_api_code);nc_add_i(out,"track_code",code);nc_add_i(out,"preview",preview);nc_add_s(out,"error",nc.error[0]?nc.error:preview?"preview_only":"stream_unavailable");}
  if(o)mj.put(o);return out;
 }
-/* Resolve and enqueue the complete top-20 chart in the factory player. The
-   player owns ordering/progress; Sidekick retains only safe display metadata. */
+/* Queue up to LX_MUSIC_QUEUE_MAX tracks. Each item points at a stable local
+   URL; the Web console resolves a fresh provider URL when the player opens it,
+   so queue lifetime is independent of CDN URL lifetime. */
 static void *nc_play_chart(const char *id,const char *quality){
  if(nc_defer_play){nc_pending_ticket[0]=nc_pending_url[0]=0;nc_pending_count=0;}
- void *d=mj.object();nc_add_s(d,"id",id);nc_add_i(d,"n",20);nc_add_i(d,"s",0);void *detail=nc_request("/api/v6/playlist/detail",d),*pl=NULL,*tracks=NULL,*out=mj.object();
+ void *out=mj.object();char playlist_name[256]="网易云歌单";char urls[LX_MUSIC_QUEUE_MAX][160];const char *urlptr[LX_MUSIC_QUEUE_MAX];struct lx_music_track queue[LX_MUSIC_QUEUE_MAX];memset(queue,0,sizeof(queue));int used=0;
+ void *d=mj.object();nc_add_s(d,"id",id);nc_add_i(d,"n",LX_MUSIC_QUEUE_MAX);nc_add_i(d,"s",0);
+ void *detail=nc_request("/api/v6/playlist/detail",d),*pl=NULL,*tracks=NULL;
  if(!detail||nc.last_api_code!=200||!mj.get(detail,"playlist",&pl)||!mj.get(pl,"tracks",&tracks)||mj.type(tracks)!=5){nc_add_i(out,"ok",0);nc_add_s(out,"error",nc.error[0]?nc.error:"chart_unavailable");if(detail)mj.put(detail);return out;}
- int count=mj.array_length(tracks);if(count>20)count=20;if(count<1){nc_add_i(out,"ok",0);nc_add_s(out,"error","empty_playlist");mj.put(detail);return out;}char playlist_name[256]="网易云歌单";const char *returned_name=nc_string(pl,"name");if(returned_name)snprintf(playlist_name,sizeof(playlist_name),"%s",returned_name);
- char ids[640]="[",urls[20][901];const char *urlptr[20];struct lx_music_track queue[20];memset(queue,0,sizeof(queue));int used=0;
- for(int i=0;i<count;i++){void *song=mj.index(tracks,i),*ar=NULL;char sid[32],artist[256]="";const char *name=nc_string(song,"name");if(!nc_id(song,"id",sid)||!name)continue;if(used)strncat(ids,",",sizeof(ids)-strlen(ids)-1);strncat(ids,sid,sizeof(ids)-strlen(ids)-1);snprintf(queue[used].audio_id,sizeof(queue[used].audio_id),"netease-%s",sid);snprintf(queue[used].title,sizeof(queue[used].title),"%s",name);if(mj.get(song,"ar",&ar)&&mj.type(ar)==5){int na=mj.array_length(ar);if(na>4)na=4;for(int j=0;j<na;j++){const char *a=nc_string(mj.index(ar,j),"name");if(a){size_t z=strlen(artist);snprintf(artist+z,sizeof(artist)-z,"%s%s",z?" / ":"",a);}}}snprintf(queue[used].artist,sizeof(queue[used].artist),"%s",artist);used++;}
- strncat(ids,"]",sizeof(ids)-strlen(ids)-1);mj.put(detail);if(!used){nc_add_i(out,"ok",0);nc_add_s(out,"error","empty_playlist");return out;}
- void *req=mj.object();nc_add_s(req,"ids",ids);nc_add_s(req,"level",quality);nc_add_s(req,"encodeType",!strcmp(quality,"lossless")?"flac":"mp3");void *response=nc_request("/api/song/enhance/player/url/v1",req),*data=NULL;int resolved=0;
- if(response&&nc.last_api_code==200&&mj.get(response,"data",&data)&&mj.type(data)==5){int n=mj.array_length(data);if(n>used)n=used;for(int i=0;i<n;i++){void *song=mj.index(data,i),*trial=NULL;int code=-1;const char *url=nc_string(song,"url");if(!url||!lx_music_number(song,"code",&code)||code!=200||(mj.get(song,"freeTrialInfo",&trial)&&mj.type(trial)!=0)||strlen(url)>=sizeof(urls[0]))continue;snprintf(urls[resolved],sizeof(urls[0]),"%s",url);urlptr[resolved]=urls[resolved];if(resolved!=i){queue[resolved]=queue[i];}resolved++;}}
- if(response)mj.put(response);if(!resolved){nc_add_i(out,"ok",0);nc_add_s(out,"error",nc.error[0]?nc.error:"no_entitled_tracks");return out;}
+ int count=mj.array_length(tracks);if(count>LX_MUSIC_QUEUE_MAX)count=LX_MUSIC_QUEUE_MAX;if(count<1){nc_add_i(out,"ok",0);nc_add_s(out,"error","empty_playlist");mj.put(detail);return out;}
+ const char *returned_name=nc_string(pl,"name");if(returned_name)snprintf(playlist_name,sizeof(playlist_name),"%s",returned_name);
+ for(int i=0;i<count;i++){void *song=mj.index(tracks,i),*ar=NULL;char sid[32],artist[256]="";const char *name=nc_string(song,"name");if(!nc_id(song,"id",sid)||!name)continue;snprintf(queue[used].audio_id,sizeof(queue[used].audio_id),"netease-%s",sid);snprintf(queue[used].title,sizeof(queue[used].title),"%s",name);if(mj.get(song,"ar",&ar)&&mj.type(ar)==5){int na=mj.array_length(ar);if(na>4)na=4;for(int j=0;j<na;j++){const char *a=nc_string(mj.index(ar,j),"name");if(a){size_t z=strlen(artist);snprintf(artist+z,sizeof(artist)-z,"%s%s",z?" / ":"",a);}}}snprintf(queue[used].artist,sizeof(queue[used].artist),"%s",artist);used++;}
+ mj.put(detail);if(!used){nc_add_i(out,"ok",0);nc_add_s(out,"error","empty_playlist");return out;}
+ int resolved=0;
+ for(int i=0;i<used;i++){char local[160];if(nc_local_url(queue[i].audio_id,quality,local,sizeof(local)))continue;if(resolved!=i)queue[resolved]=queue[i];snprintf(urls[resolved],sizeof(urls[0]),"%s",local);urlptr[resolved]=urls[resolved];resolved++;}
+ if(!resolved){nc_add_i(out,"ok",0);nc_add_s(out,"error","queue_build_failed");return out;}
  int bad=0;if(nc_defer_play){unsigned char bytes[16];bad=nc.random(bytes,16)!=1;if(!bad){nc_pending_count=resolved;snprintf(nc_pending_playlist,sizeof(nc_pending_playlist),"%s",playlist_name);for(int i=0;i<resolved;i++){snprintf(nc_pending_urls[i],sizeof(nc_pending_urls[i]),"%s",urlptr[i]);nc_pending_urlptr[i]=nc_pending_urls[i];nc_pending_queue[i]=queue[i];}for(int i=0;i<16;i++)snprintf(nc_pending_ticket+i*2,3,"%02x",bytes[i]);nc_pending_until=lx_music_ms()+90000;nc_add_s(out,"play_ticket",nc_pending_ticket);nc_add_i(out,"queued",1);}}
  else {char result[1024];bad=lx_music_play_queue(urlptr,queue,resolved,playlist_name,result,sizeof(result));}
  nc_add_i(out,"ok",!bad);nc_add_i(out,"queue_total",nc_defer_play?resolved:(bad?0:resolved));nc_add_i(out,"requested_total",used);nc_add_s(out,"playlist",playlist_name);if(bad)nc_add_s(out,"error","playback_not_confirmed");return out;

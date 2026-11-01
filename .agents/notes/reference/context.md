@@ -318,3 +318,17 @@ Agent loop：新增 `src/native_agent_loop.h`，提供 provider 接口（stats/s
 - 资源：单核约 21%，RSS 约 2.3 MB。
 
 线上验证：音乐播放中两次真人“豆包豆包”以 12.5082、14.6845 在候选暂停后确认，会话正常建立并恢复播放；同一实例有 2 次未确认暂停。用户确认可用。高音量、远场、打断和长时间稳定性未验证。诊断入口 `--mic-compare <秒>` 只在内存里并行打分各采集版本。报告见 `reports/采集路径回声消除接入-第二十二轮.md`。
+
+## 音乐队列播放中断：CDN 直链过期（2026-11-01）
+
+用户反馈播放中“连接失败”。实测原厂 `mediaplayer` 日志：22:50 至 23:15 正常播放 5 首；23:15:17 第 6 首自动切换起连续 10 次 HTTP 403（`err code:-10102, detail:403`），剩余队列全部无可用 URL，原厂播报“播放失败，请检查网络或换一个试试吧”。所有 URL 的时间戳都是 `20261101231505`，即 23:15:05 到期；网络本身正常（RSSI -45 dBm、ping 0.28 ms、TCP 建连成功后返回 403，Mac 复取同一 URL 也 403）。根因是 `nc_play_chart()` 在入队时一次性签发 20 首直链，队列寿命超过直链有效期后不续期。第二十六轮已改为本机 302 现场刷新并支持 100 首与顺序循环，见下节。
+
+## 本地 302 刷新、600 首队列与原生循环（第二十六至二十八轮，2026-11-01/02）
+
+队列 URL 改为 `/r/<provider>/<track-id>/<quality>.<ext>`，例如 `http://127.0.0.1:18080/r/netease/1329831232/exhigh.mp3`。Web 只对回环来源提供该路由；请求到达时用现有网易云会话调用单曲取流接口，校验后返回 302 和 `Cache-Control: no-store`。原始 CDN URL 不再入队，队列寿命与直链有效期解耦。
+
+队列上限从 20 提高到 600（`LX_MUSIC_QUEUE_MAX`）；`nc_play_chart()` 改为单次取 600 首元数据，构造本机 URL 后分 300 首一块入队（`REPLACE_ALL` 后 `APPEND`，再 `player_play_index 0` 回到开头）。`NC_RESPONSE_CAP` 提高到 4 MiB，以容纳 538 首歌单的详情响应。`web/app.js` 的“前20首”改为“前600首”。
+
+原厂播放器本身支持列表循环，之前是参数名传错。实测 `play_mode` 映射：`SEQUENCE` → `loop_type=1`（列表循环），`LoopSequence` → 2（末尾停止），`LoopTrack` → 0，`LoopRandom` → 3。`lx_music_play_queue()` 使用 `SEQUENCE`；不再需要 Web 轮询重排。
+
+实测：`/r` 回环请求 302，目标 CDN 200（11.9 MB）；局域网请求 403；非法 ID/平台返回 400/404；HEAD 同样 302。538 首歌单实际入队 `queue_total=538`、`requested_total=538`，首曲播放状态 1、`loop_type=1`，Web RSS 约 2.6 MB、可用内存约 28 MB。600 首测试队列被原厂接受（请求 JSON 121 KiB、状态响应 8.5 KiB）；1000 首单次详情请求超过 20 秒。部署二进制 SHA256 `52a954bb3bdcf382b0e543ad38927bbc5cce04cfdd8ecbdb6490ae2001b8ad82`，PID 3940；旧版在 `revision21` 至 `revision28-original`。重启时未带语音 Key，`credentials_loaded=0`，语音启动功能需重新提供 Key 后重启。
