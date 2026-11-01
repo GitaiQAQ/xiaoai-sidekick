@@ -1,0 +1,8 @@
+{
+  "source": "https://github.com/idootop/open-xiaoai",
+  "archive": "open-xiaoai-main.zip",
+  "sha256": "284e22c1582163464d3e08916840e2be2946c73610496a19c09aaf0f448e6517",
+  "downloaded": "2026-11-01",
+  "commit": null,
+  "note": "Commit id was not recorded when the archive was downloaded; this content hash pins the vendored copy. Re-record with `git rev-parse HEAD` when upgrading."
+}

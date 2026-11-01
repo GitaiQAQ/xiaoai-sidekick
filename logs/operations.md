@@ -1,0 +1,164 @@
+# 操作记录（实际输出摘要）
+
+1. pnputil 在线列表初期未发现音箱；扩展到断开设备后发现两个 VID_1B8E&PID_C003 历史记录。
+2. 用户提供 Amlogic 工具目录。曾运行 pnputil /add-driver：输出 Already exists，oem117.inf，无新增包；随后用户明确要求不再安装驱动。
+3. 循环 update.exe identify 捕获接口，Windows 确认 WorldCup Device / Started。
+4. 执行只读 bulkcmd printenv boot_part bootdelay product_model、mtdparts，仅返回成功状态；help mtdparts 失败。
+5. 使用 update.exe mread store <partition> normal <length> <local file> 读取分区。
+   boot0 0x600000 OK；bootloader 0x200000 OK；tpl 0x800000 OK；boot1 0x600000 OK。
+   system0 0x2820000 失败；随后 system0 0x2800000 OK；system1 0x2800000 OK；data 0x13e0000 OK。
+6. 原备份生成 sha256.csv；复制入本项目后重新生成 manifest.csv（相对文件名、字节数、SHA256）。
+7. Projects 路径建目录失败，改在 Desktop/lx06-agent 成功。复制工具和备份，未移动/删除原件。
+
+未执行任何设备固件写入或启动环境保存。USB identify 可能中断正常启动，使音箱停留在引导通信状态。
+
+8. boot0/boot1/system0/system1 第二次 mread 完成，SHA256 与原备份全部一致。
+9. 用户调整优先级：先启用 SSH，分析留后。已确认发布页对应补丁及 SHA256。
+10. Invoke-WebRequest 与 curl.exe HTTPS 下载失败，未下载到固件。等待浏览器下载 LX06_1.94.13_patched.squashfs 到 firmware 后继续。设备未写入。
+
+11. 用户下载的 LX06_1.94.13_patched.squashfs 经 SHA256 核对匹配上游发布值，已按用户要求从 Downloads 移至 firmware；移动后再次校验一致，Downloads 原路径不存在。尚未刷写。
+
+12. 已设置 bootdelay=15、boot_part=boot0 并 saveenv，均返回 success；system0 补丁刷写 mwrite success。读取 0x24ac000 字节回电脑，SHA256 与补丁完全一致。原厂 boot0/boot1/system1 未刷写，待断开 USB 并电源重启验证 SSH。
+
+13. 扫描当前电脑同网段 TCP/22，发现 192.168.100.210。SSH 默认凭据成功登录；实读 /usr/share/mico/version 确认 HARDWARE=LX06、ROM=1.94.13；uname -srm 返回 Linux 4.9.61 aarch64。MAC=4c-c6-4c-fa-8f-9f。SSH 主机密钥记录 tools/known_hosts。只读取版本，无进一步分析。
+
+14. 完成第一轮SSH系统盘点：内存/MTD/进程/端口/ubus/启动脚本/ALSA，日志按主题存于logs。读取fw_env确认boot0/15。
+15. 本机TLS命令行失败，但音箱curl可联网；通过SSH二进制管道下载Open-XiaoAI源码ZIP及官方7zip23.01到PC。未在音箱安装额外常驻服务。Windows脚本策略阻止直接执行ps1，使用已保存脚本内容作为scriptblock调用；修正SSH stdin为LF避免尾随CR。
+16. 7zip提取原厂system0、补丁及system1版本。部分符号链接创建失败，提取退出2；三份SquashFS归档完整性测试返回0。按普通文件计算差异和libxaudio六字节修改。
+17. system1从SSH尝试读分区全长失败，实际40MiB，尾128KiB I/O错误；移动失败副本到rom，不当作完整备份。
+18. 执行1秒共享采集到/dev/null，exit0，原拾音PID不变；未保存音频。查询原厂播放/Mesh状态成功；不带凭据探测云端TLS成功但未鉴权。
+19. 原生文本执行、豆包模型调用、音频质量/回声、所有原厂功能回归均未验证。未发声、改音量、改闹钟或执行家电动作；未停止服务。
+20. 完成.agents/notes/reports/LX06-豆包接入分析报告.md（第一轮报告），整理证据、已知限制和后续计划。
+
+21. 核对本地KWS README、monitor.rs、kws.rs；新增.agents/notes/reference/wake-routing.md，记录双唤醒方案及资源约束；原报告被占用未更新。本轮未改设备。
+
+22. 用户纠正研究方向：以设备固件与运行环境为主。已直接读取原厂唤醒配置、mipns映射/FD/socket，不再以社区KWS限制判断硬件能力。
+23. PC新增官方Python嵌入版及PyPI Capstone/pyelftools（wheel SHA256已核对）；未在音箱部署。创建ELF符号提取、ARM/PLT注释、模型/GOT分析和protobuf-c解析脚本。
+24. 反汇编确认若干唤醒配置导出为空实现；找到真实回调设置及init_system调用链；确认内置模型默认加载分支。
+25. 从原厂消息库提取12种消息描述，并用实机进程Unix datagram端点交叉核对。实机四个原厂程序/库MD5匹配本地，patched音频库也匹配。
+26. 写入.agents/notes/reports/原厂唤醒链路-直接固件分析.md；未动态注入、停止进程、更换配置或录制环境音。
+
+27. 继续原厂分析，恢复main/init_system回调传参，确认wake=0x19528、asr=0x19740。只读取已定位/proc/1282/mem中的16字节控制指针，与静态回调相符，未改内存。
+28. 解出上行8种type及下行11项跳转表，结合描述符字段偏移、组包存储和原厂日志验证；生成proto2重建文件及证据片段。asr_partial只有final/length，没有text。
+29. 明确libmdspeech含分布式唤醒仲裁，原本地speech组包代码在mipns可执行文件。不能把原始唤醒/确认唤醒误当两个唤醒词，也不能绕开仲裁直接吞事件。
+30. 本轮只读健康检查，Mesh正常、原厂进程不变；未发送控制包或部署新进程。完成.agents/notes/reports/原厂会话与回调-第三轮分析.md并更新上下文。
+
+31. 持续工作：按用户要求建立持续目标；45秒元数据观察已结束，没有捕获唤醒，不保存语音载荷。读取原厂SDK常量确认32000/64000为Opus码率常量；继续分析实际编码路径。未改写设备内存、启动项或原厂服务。annotate-native-arm.py增加可选文件参数以分析mico_aivs_lab和SDK。
+
+32. 第四轮原厂编码分析：修复SDK PLT字面量终止解析问题；确认SDK默认ENCODED_BY_CLIENT=false及其编码器选择，恢复mico下行外层type=1。保存GOT重定位与反汇编证据。尚未动态确认音频格式。
+33. 官方Zig0.13.0压缩包SHA核对，PC便携解包。Windows主机目标失败，ARM Linux目标成功（工具自带CRT兼容警告，构建退出0）。生成31056B探针和24156B隔离socket实验；未安装系统工具。
+34. SSH临时传输首试因设备无base64失败，清理已执行；改printf八进制传输，远端SHA256匹配后执行。实机协议合成20项检查通过；隔离Unix datagram双向转发/发送者名称/撤回测试通过。执行后临时文件目录均删除。
+35. 10:25:48健康核查原厂PID1282/2527未变化、Mesh正常、原speech sockets存在、测试残留为空。报告与源码入口已更新，整体目标仍未完成。
+
+36. 增加reader式元数据解析及只读PTRACE通信线程观察器。ARM32 syscall phase来自官方ARM64内核实现，随后在实机合成进程核对。21项协议检查及不读音频guard通过；正常detach/观察器SIGKILL均验证目标继续收包。
+37. 实读线程/FD/Unix inode映射，定位mico TID2601 FD8 speech，避免common。5秒原厂空闲观察完成、无报文、TracerPid0；未改socket或回调。
+38. 定点读取AudioRecord控制配置32B、ASR cache回调控制16B；48000/8ch/2bytes ->16000/7ch/2bytes中间流；ASR callback0x19740/context0x5fc20与1920B调用点交叉核对。未读音频缓存。
+39. 完整解析两份内置模型的BINN风格方言容器，核验总长度/节点数，提取五部件。完整解出490B OpenFST图（10状态19弧），3/4标签在同一路径，未改模型。所有产物与脚本保存在项目。
+40. 用户同意配合后开启60秒只读元数据观察；第二SSH确认TracerPid785再提醒说话。65条真实上行全部解析、元数据961B、音频字段累计157440B（未读取）。用户反馈正常唤醒并回答。10:42:34目标已脱离、PID/Mesh正常、临时二进制清除。真实窗口日志单独保留。
+41. 写第五轮报告并更新入口/上下文。改进观察器流统计后重新通过合成/恢复测试，未重复用户窗口。整体双唤醒/豆包/米家控制与全功能回归仍未完成，目标保持active。
+
+42. 新增glibc动态库探针。Zig默认glibc链接内部失败；分开对象编译正常，改项目最小ARM入口和本地原厂DSO链接。产物缺PT_INTERP首试漏拦截，误直接exec导致仅探针SIGSEGV；后改显式原加载器、加ELF/依赖/版本/执行模式校验，运行通过。
+43. 核对原厂coredump.sh及本探针历史标记，归档处理触发。未读删厂商归档、不声称本轮系统无任何写入。后续main关闭自身dumpable并读回0，未改全局处理器。
+44. 动态库查询复用glibc2.25/curl7.55.1/SSL1.0.2l。默认模式strace无网络调用、RSS940KiB；TLS HEAD Ark401/voice根404且证书校验0，RSS1992KiB，认证模型调用0/音频上传0。所有临时程序/trace移除，原厂PID/Mesh正常。
+45. 用户确认两类API都有。创建不含秘密的示例和Git忽略私有凭据模板、只输出标志的检查器，已异步请求用户填写或给本地路径。未读到实际Key，未鉴权。核对官方3.0 Realtime新协议，不能混用社区旧二进制接口。完成第六轮报告并更新上下文。
+
+46. 编写原生Ark受限客户端、扩展构建与ELF白名单校验；音箱无网ark-test通过并清理，原PID未变。凭据仍为空，未做认证HTTP；秘密stdin包装与JSON解析实测待完成。
+
+47. 原厂json-c自检、公开假凭据stdin通道实测通过；新增认证运行包装，不输出秘密。原厂进程/Mesh正常、临时文件删除。
+48. 原厂curl CONNECT_ONLY原始TLS收发验证，实时语音固定Upgrade无认证收到400、verify0、RSS1992KiB。GLIBC新导入先被校验拒绝，核对原厂定义后仅扩探针白名单，再部署通过；无认证会话/音频。写第七轮报告。
+
+49. 新增受限RFC6455帧头/客户端mask模块，音箱通过RFC Hello固定向量及畸形/截断/上限测试；无网络，原PID未变并清除临时程序。仍未101握手/消息重组/实时会话。
+
+50. 原生WS增量流/UTF8/Close/握手校验，实机33项+RFC原厂crypto向量通过，临时清理、PID不变。新增认证升级关闭代码但未真实鉴权。
+51. 共用Doubao秘密stdin包装、保留Ark旧入口，实时假Key无网检查实测通过；Mesh正常。新代码无认证TLS400/RSS2004KiB，非会话成功。
+52. 集中反汇编原厂7个ASR/DNN边界函数，发现cache_data_save前长度除2及条件性半缓冲选择，未确定语义/最终PCM格式。写第八轮报告和实时客户端文档。
+
+53. 用户暂停后要求交接，创建HANDOFF.md并更新上下文。未继续设备分析或部署；目标未完成且保持暂停。
+
+54. 2026-11-01 12:55用户明确恢复并选择连设备。复核PID1282/2527、TracerPid0、Mesh三项true、内存/数据和两个speech socket；删除已归档的/tmp/lx06-session-metadata.trace，.core_history保留。
+55. 只读反汇编确定AFE双队列为int16元素、输出640B双平面（各160样本）；_pass为直通累积拷贝；唤醒线程半缓冲默认取第二半，全零时切第一半。产出tools/native-dnn-frame.py、temp/analysis/native-dnn-frame-layout.md与反汇编全文。未读音频、未调原厂音频接口。
+56. 探针新增回环测试服务端/客户端，设备上四种场景（正常101、错误Accept、400、不回Close）结果符合预期；明文回环，非真实鉴权。未改持久状态，PID/Mesh正常、临时文件清理，写第九轮报告。
+57. 新增AFE帧动态复核程序：dlopen原厂引擎、伪造节点对象喂合成帧，实测640字节双平面与静态推导一致；首版字段误判致测试进程SIGSEGV，修正后通过，未产生core归档、PID不变。58. 核对官方Seeduplex正文：确认JSON文本帧+Base64音频、model 1.2.6.1、16k输入/24k输出、mute与session.close语义及全部事件名、S2S主打音色ID；写入实时客户端文档，未做真实会话。59. 用户提供语音API Key；只写私有文件并经独立stdin通道使用。设备实测101升级+Accept+close1000通过，未发音频。
+60. 新增--ws-session：真实session.create/session.created/session.close/session.closed全部成功，官方model与Vivi音色ID被接受；全程无麦克风、无音频；写第十轮报告。61. 方舟Key入库；用不存在的模型探到404，确认鉴权通过而非401。
+62. 文本链路双验证：chat/completions与responses均200；发现默认reasoning项会吃掉token预算，32不足、256正常；新增--responses与-Responses开关。63. 找到共享音频通道：dsnoop PCM mico_record 可与原厂同时采集，default(dmix) 可同时播放；未停原厂服务、未改配置。
+64. 新增机内双工客户端，修完 URL/字段/缓冲/线程初始化/队列容量/静音超时六处问题；设备实测完整回答播放，用户确认可听；写第十一轮报告。65. 新增机内唤醒词检测（纯 C，无新依赖）：src/native_kws.h 自写 cos/log/sqrt + MFCC(25ms/10ms/512FFT/24mel/13+13) + Sakoe-Chiba DTW + 端点裁剪 + 滑窗检测；src/kws_templates.h 存放 3 个模板（tools/kws-build-templates.py 由设备 dump 生成）；客户端加 --kws-score/--kws-capture/--kws-live/--kws-wav/--kws；Build-NativeGlibc 加 -ffp-contract=off。MFCC 与独立 Python 直接 DFT 参考对齐到 1e-4；无 libm 数学函数与 libm 误差 cos 3.4e-6/log 1.1e-6/sqrt 1.2e-7。
+66. 设备离线自检（--kws-score，不联网）：8 段=590/780、3640/640、6470/2290、9040/850、10370/300、11010/880、12650/3180、17400/530；剔除 300ms 与 3180ms；6 段两两 DTW，选 0/1/3 为模板，簇内最大 11.3680，阈值 14.7784；判决低于阈值 0.0001/8.2515/11.3680/14.0157，并段 2290ms 长度门限拒绝，530ms 弱段 16.2833 高于阈值；整段滑窗 5 次判醒（1820/4420/11820/13620/16420ms）均在说话处，尾部噪声窗最低 16.8997。日志 logs/native-kws-score-runtime.txt。
+67. 现场负样本：--kws-capture 15s 67 窗/8 窗打分/最低 17.0379/0 唤醒；--kws-live 30s 142 窗/2 窗打分/最低 18.9865/0 唤醒；--kws-wav 回放 1854ms 判醒、前滚 4800 采样、无 Key 停在 detection_only。每次运行后 mipns=1282、mico_aivs_lab=2527 不变，临时二进制删除，无 /tmp/lx06-agent-* 残留。
+68. 度量调整缘由：最初 CMN+全维+阈值 17.72 的版本在现场 45s 出现 15 次误唤醒（距离 12.6-15.2）；改为不去均值、c0 去均值后×0.25 作为能量包络、加运行底噪门（10% 分位 + 12dB）后现场 30s/15s 均为 0 次。属实测对比，日志已被后续运行覆盖。
+69. 未验证：对设备说出唤醒词后建立真实会话、上传前滚、播放回答、回到待机这一闭环（需 Key 与现场口述）；未验证他人声音与远场；未做原厂唤醒/米家联动回归。
+70. 新增 .agents/notes/reference/kws.md 与 .agents/notes/reports/机内唤醒词检测-第十二轮.md；二进制 lx06-duplex-armhf 现含 KWS，SHA256 d7898db9aa8eeb0fadb0326ea2e2b22c11da75bfdb5be44f83bfa7f3ea63449a，ELF 校验仍为 ELF32 EM_ARM/无 PT_INTERP/libc+libdl+libpthread。71. 补充现场实测（重要负面结果）：安静期 --kws-live 30s 142 窗/2 窗打分/最低 18.9865/0 误唤醒，--kws-capture 15s 67 窗/16 窗打分/最低 14.4438/0 判醒；但房间持续有人说话时 --kws-live 20s 92 窗/38 窗打分/最低 10.5620，连续两窗低于阈值共 8 次 → 会误唤醒。被别人声命中的跨度 570-910ms、峰值 33-45dB、距离 10.56-14.73，与注册录音最弱一遍（530ms，16.28）同量级，说明 3 模板+MFCC/差分+20% 带宽 DTW 对"任意 0.6-0.9s 连续语音"判别力不足，不是阈值问题。
+72. 据上一条修正文档措辞：阈值 14.7784 只能在安静环境使用；有人说话时会误唤醒。建议后续安静环境补录 5-10 遍、提高分辨率（40mel/20cepstra/二阶差分）、或把 LX_KWS_MIN_HITS 从 2 提到 3-4；最终判决建议交给小模型，DTW 只做候选筛选。以上建议未实施。
+73. 最终二进制 lx06-duplex-armhf SHA256 0303e2b7ee4955b2c5c27960a387bffd9391b05424a1dc3a182d6c5cfc25e921（与上一条记录的 d7898db9 不同，仅因新增 --kws-dump 与 LX_KWS_MIN_HITS 宏；默认值下生成代码等价，自检数值不变）。--kws-dump 可输出特征供 tools/kws-build-templates.py 使用。74. 结构重构以满足"回到本地待机"：把会话逻辑抽成 run_session()，--kws 现在按"待机→判醒→会话→回到待机"在同进程循环（保留已学到的噪声底，清零 hits），并新增 Run-NativeProbe 的 kws-standby（--kws N，无 Key 时只到 detection_only）。重构后 lx06-duplex-armhf 仍通过 ELF 校验，--kws-score 结果与重构前逐位一致（cluster=0,1,3 intra_max=11.3680 threshold=14.7784）。
+75. 重构后实测：--kws 12（无 Key）在 5.06s 被室内说话声判醒（dist 13.5052/14.2000），停在 wake_detected no_key_stdin detection_only=1，未联网；--kws-wav 回放仍在 1854ms 判醒、前滚 4800 采样。二进制 SHA256 721019add167d8d11b3db2fc3e750f4e7b7cc8dbbf7dda7ca4314ef61354742d。76. 重构后回环验证：直连 --duplex 8（真实 Key）session_ready=1、398 帧上行、session=pass；--kws-wav + 真实 Key（Invoke-DoubaoSmoke -Duplex -KwsWav，模式 --kws-wav /tmp/doubao_enroll.wav）1849ms 判醒→upgrade=101→session_ready=1→preroll_uploaded=4800→1494 帧上行→正常关闭 session=pass。回放里没有提问，模型保持沉默（audio_bytes=0），因此"说话→回答→播放完"这一语音闭环仍未验证。
+77. 修复重构引入的缺陷：run_session 初版漏了 RAND_bytes/EVP/json 的 dlsym 绑定，且失败点无日志；已在 run_session 内自绑定并加 session_failure_stage 输出，重新验证通过。最终二进制 SHA256 a57d60c6d3371bf9cb7465f302727abfe6b372071461efb2cebc752dae935313，自检数值与重构前完全一致，原厂 PID1282/2527 与 Mesh 正常、/tmp 无残留。
+78. 2026-11-01 14:52 计费风险处置：检查设备发现 /tmp/lx06-agent-realtime-62d858e0 仍在运行（PID 3509），持有到 openspeech.bytedance.com（157.255.232.105:443）的 ESTABLISHED 连接并持续上传音频；已 kill，连接转 TIME_WAIT，删除 /tmp/lx06-agent-*。同时停止仍在做现场测试的子代理，并 kill 其随后拉起的 --kws 待机进程 3554。复核：无 lx06-agent/doubao 进程、无到 openspeech 的连接、无引用 lx06-agent 的自启动项；原厂 mipns-xiaomi 1282 与 mico_aivs_lab 2527 未动。原因判断：演示客户端进程不退出就一直上行，会话随进程存活；服务端只在约 18 秒无音频时断开会话。后续须用 --kws 待机并按回答结束关闭会话，且现场测试结束即杀进程。
+79. 2026-11-01 15:09 唤醒词收紧与负样本：新增 build\tts_sentences.json 与 build\make-tts.ps1，用 Windows Huihui TTS 生成 53 条 16 kHz 单声道中文语音（34 句日常话术、前 8 句各带 ±2 语速）；主机 host-kws 打分 0 次误唤醒，最低距离 19.68。设备 --kws-score：阈值 12.5048（1.10×11.3680），连续 3 窗；4 段同词只有前两段在滑窗判醒（2.02/4.62 s），第三段被相邻长语音并段、第四段距离 14.02 高于阈值。--kws-live 20 s（峰值 52–58 dB、底噪 34–46 dB）92 窗 0 判醒、最低 17.84；15 s 67 窗 0 判醒、最低 15.29。--kws-wav 回放 2.07 s 判醒、前滚 4800、无 Key detection_only。
+80. 会话上限与信号：新增 LX_SESSION_MAX=25、LX_NO_SPEECH=6（可用环境变量覆盖），循环打印 session_stop=max_duration/no_speech/signal；SIGTERM/SIGINT/SIGHUP 置标志后退出并发送 session.close。真实 Key 的 --kws-wav 8 s 闭环：判醒→101→session_ready=1→前滚 4800→299 帧上行→6 s 无人声触发 no_speech→session=pass，未播放音频；结束后无 lx06/doubao 进程、无 openspeech 连接、/tmp 无残留。timeout -t 8 的信号测试打印 standby_stopped=signal、duplex_client=pass、退出 0；原厂 PID 1282/2527 始终不变。
+81. 常驻部署：新增 --daemon（fork+setsid、0700 pidfile），deploy/start.sh（0600 FIFO 传 Key，不落盘、不进 argv）、stop.sh（杀客户端/写入者、删 FIFO、兜底按路径查杀）、status.sh（进程、openspeech 连接、日志尾）。已安装 /data/lx06-agent/（新建目录，ubifs 余量 8.2 MB），二进制 SHA256 688100848D23532CBAA22D07E882FE9BA7A00D414A63666848DC09CF08D53870，start.sh 5CF6A898…，stop.sh AB47D6C1…。新增 tools\Manage-LX06Service.ps1（安装/启动/停止/状态，-FakeKey 只验证启停）。实测：假 Key 启动 pid 912、待机无连接、stop 后日志 standby_stopped=signal；真 Key 启动 pid 1073、5 s 内 0 唤醒 0 连接、stop 正常。未配置开机自启。
+82. 修订 .agents/notes/reference/kws.md 与 .agents/notes/reference/context.md（第十三轮）。剩余风险：真人持续说话的现场负样本未复测；他人声音/远场/电视音乐未验证；阈值收紧后现场可能要说两遍；重启设备后需重新启动服务。
+83. 第十四轮接手：读取临时handoff并验证旧程序SHA45F2F3B5...，核对无运行客户端。用户授权修复唤醒率/连续对话/反馈。旧程序和源码备份build/revision14-original。
+84. 修复MFCC模板偏移漏乘26；补充旧录音有效段5，保留阈值12.5048/3连续窗。主机及实机验证四模板自身匹配；53条合成负样本0触发、15秒67窗0现场触发（最低14.1956）。用户选择稍后补录。
+85. 直接分析原厂wakeup.sh/show_led及led ubus，找到wozai.wav和1/2/3灯效。先静态灯/我在短测用户确认；后接入三态灯演示通过。未执行原厂wakeup.sh的播放器/会话操作。
+86. 会话添加同一连接连续追问、mute/unmute、播放完成后8秒/总60秒；第一窗口snd_pcm_delay判断未完成，SIGTERM停止，记录continuous-live-first.txt。修正drain/prepare后第三窗口2次音频完成与followup、105535样本全部写出，用户确认“全都正常”。第二窗口未唤醒即停止。
+87. 最新追问活动改为ASR事件，防环境能量一直重置计时；21策略检查通过，ELF/构建通过，安装D46ABEA0...，该小修未再真人验证。已停自有服务、原厂PID1282/2527/Mesh正常。Manage工具Status/Stop改为只做对应操作，上传先验SHA再替换；修复start.sh行尾CRLF导致一次启动127（未开会话），改LF后启动正常。
+88. 更新.agents/notes/reference/kws.md（旧文归档KWS-revision13.md）、DEPLOY_REVISION14.md、.agents/notes/reports/唤醒反馈与连续对话-第十四轮.md及上下文；无开机自启/刷固件/新录音落盘。剩余：补录、真实负样本、最新8秒静默关闭、同时小爱灯效仲裁、原厂全功能回归。
+
+89. 工具能力盘点：只读ubus方法签名，输出tools-capability-inventory.txt；编制.agents/notes/reference/tools-roadmap.md，明确方法存在与实测控制的区别。未更改音量/播放/闹钟/外设。
+
+90. 聚合音乐评估：实机可用RAM43784KiB、/data8228KiB、DLNA info0；静态确认原厂libffmpeg音频/网络组件，保存music-architecture-runtime.txt。查阅MA/Navidrome/XiaoMusic/MusicFree一手文档，完成.agents/notes/reports/聚合音乐环境-方案评估.md。未播放音频、未安装、未登录音乐账户。
+
+91. 清理可行性只读审计：记录mount/df/meminfo/目录大小/日志名字/RSS/zram状态。未读日志正文，未删除/停进程/改日志轮转/启用swap。报告机内空间与内存清理评估.md；优先机内流式轻量设计，当前空间未满。
+
+92. 音乐实现进行中：新增src/native_music.h/client.c与回环HTTP测试源native_music_stream_test.c，构建Music目标通过；尚未上传运行或做流式实测。用户中途明确接受播放URL进原厂日志，取消为隐藏URL设计的代理要求，改直连播放。
+
+93. 第十五轮：原生C音乐适配与回环流测试。首轮play_url音频流被读取，但暂停失败并恢复缓存歌单，已mphelper暂停；首测日志未独立保留，第二轮失败归档native-music-stream-attempt2.txt。通过固件解析恢复player_play_music payload和media=common，最终播放/暂停/继续/替换/非播放状态核对成功，源实际发送252480/100800B，临时清理完成。旧缓存队列被测试单曲替换，未证明恢复；volume19未变、loop1恢复。最新构建F09BDFD1...，7参数拒绝测试通过，原PID/Mesh正常。未接网易云/注册豆包音乐tools/持久安装。报告第十五轮。
+
+94. 修正音乐测试灯残留：led显示type3且无测试进程，手动shut L3后状态为空，保存music-led-residual-cleanup.txt。测试脚本cleanup仅在播放器仍标识lx06-direct-stream时撤销L3，避免shut_all。制定NETEASE_ACCOUNT_PLAN.md并核对上游模块，未请求/保存网易云登录会话。
+
+95. 新增机内Web控制台、HTTP+JSON v1/SSE、二维码本地渲染与网易云原生适配；部署范围见.agents/notes/reference/web-deploy-scope.md。保留语音旧版build/revision16-original。
+96. 用户扫码确认；账号验证成功，0600会话725字节。Web升级重启后刷新验证恢复登录，不记录身份或Cookie。
+97. 搜索并播放用户指定《左手指月》萨顶顶536096151，exhigh请求，拒绝试听；时长230544ms、进度增长，用户确认声音正常。实际码率和FLAC未验证。
+98. 最终HTTP检查通过，见logs/web-http-validation.txt。真实助手曾运行，收尾voice.stop成功，音乐继续。Web保留、无启动项修改。报告第十六轮记录限制。
+
+99. 用户确定XiaoAI Sidekick品牌与xiaoai-sidekick仓库名；调整Web和README介绍，区分项目方向与已实现能力，仅更新静态资源。
+100. 实机仅原子替换index.html/app.css，旧版保存在同目录.before-sidekick；未重启服务。HTTP资源与本地逐字节一致，品牌文案断言及既有接口检查通过，保留账号会话。
+
+
+101. Revision 18: added factory queue metadata association, title/artist/playlist/index display, previous/next, Netease charts and authenticated user playlists, first-20 queue playback, and Doubao playlist tools. Web/Duplex cross-builds and factory ARM/glibc ELF checks passed. Stopped Sidekick wake listener; backed up current binaries and assets to revision18-original; deployed Web PID 3196 with Sidekick voice stopped. Factory services and Netease session remain. No automated or live voice tests run. User-playlist endpoint, index behavior, and actual queue metadata matching remain field-verification items. Report: the revision 18 player-queue report.
+
+102. Final revision-18 follow-up: saved-session refresh now runs when loading account playlists. Backed up the deployed queue release to revision19-original, rebuilt and deployed Web SHA256 E45B9CB98F49E50E8D21DBE7F6F3D43FBF99D47074C62BA4688F049518071F2A; PID 3446. Duplex and static assets unchanged. Factory services remain up; Sidekick voice stopped.
+
+103. 2026-11-01 17:30-17:50 歌单列表修复（第十九轮）。现象：netease_playlists 始终 network_or_tls_failed，同期 charts/chart_tracks/refresh 正常。临时诊断输出 curl 结果码为 23（写回调中止）；libcurl verbose 显示该请求响应 Content-Length 728466，超过原 262144 接收缓冲。用设备自带 curl 重放应用同一加密请求体与 Cookie 连续 8 次均为 112820 字节紧凑变体，目标 IP 相同（220.197.30.67），差异原因未定。改动仅 src/native_netease.h：NC_RESPONSE_CAP=1MiB、溢出返回 response_too_large、超时 8s→20s；诊断代码已全部移除。部署前已把当时文件备份到 /data/lx06-agent/revision20-original/（web e45b9cb98f49e50e8d21dbe7f6f3d43fbf99d47074c62ba4688f049518071f2a、duplex 3d561922cb32b946344c5b4dfacc4b7850f6f62737fadbe90e2d5da8a4c65f9d、index da9f3c78…、app.css fba015ff…、app.js 6b142f2f…），Web 新 SHA256 86DA9335C1DC079EB11CE602459628191B95D19E4894E8CAADF082C33FAC9BA2，PID 2107，Duplex 未改。实机验证：歌单 50 条/约 0.9s；歌单曲目 19 与 20；歌单队列 queue_total=19、卡片 Nonsense/Sabrina Carpenter/@Gitai的十年精选辑/1-19；next、previous、pause、resume、stop、搜索均通过；Edge 无头渲染截图确认页面。原厂 1282/2527 与 Mesh 未变，语音保持停止，网易云会话未改，/tmp 诊断文件已清理。豆包歌单工具仍待真人语音窗口验证。
+
+104. 2026-11-01 18:00 Agent loop 标准化与工具注册表（第二十轮）。新增 src/native_tools.h（12 个工具单一真源，名字/描述/Schema/动作/范围）与 src/native_agent_loop.h（provider：stats/send_audio/send_json/pump；host：capture/recover/play/led/state/tool 回调；轮次策略、工具轮、追问、预算）；Web 抽出 action_execute，新增仅本机 socket 的 /api/v1/tools 与 /api/v1/tool；语音端删除 tb_tools/tb_method，改为拉目录＋转发调用。部署 Web 4A559F5FE5C7A19B93F5D2B5EBBDE937D552F01A7E652B8F1322087FE1489BE5、Duplex 0D77AFE0299C0D1648D6396616E4B90701FAC4C23A083FCADFD8713AD36F4A8F，Web PID 2854；revision20-original 保留旧版。实测：目录 12 项；music_charts/music_search/music_playlist_tracks 经新通道返回真实结果；未知工具 unknown_tool；RPC 与页面动作回归正常；--transport-self-test 9 项；唤醒回放 session=pass。计费修正：会话 10 秒内无任何回答开始则关闭（session_stop=no_response），本地语音门限 900→2500；回放无语音会话 415 帧（约 8.3 秒）结束，未到 60 秒上限。原厂 1282/2527 与 Mesh 正常，语音进程已停止，临时二进制清理。真人完整点歌入队与新循环的第二 provider 仍待验证。
+
+105. 2026-11-01 18:30-19:00 语音交互调优。新增 session_end 工具（播完最后一句回待机，本地工具链路验证）；唤醒应答换成豆包音色（--make-ack 音频注入生成，归一化峰值 30000，feedback_ack 优先读 wake_ack.wav）；回答 PCM 乘 LX_ANSWER_GAIN=250%（峰值约 −8.5 dBFS）；音乐播放时连续命中 3→4，第 3 个命中暂停播放器 2.2 秒确认；新增唤醒词打断（barge_in，未真人验证）。部署 Web 1E29E9C7…B348、Duplex 9A3DB99D…53F3，Web PID 3662。现场反馈音乐下仍有误唤醒/漏唤醒。
+
+106. 2026-11-01 19:00-19:20 原厂 AEC 逆向与原型。实测 hw:0,3 8 通道：ch0–5 麦克风（静音 RMS 3.8e12–5.1e12，音乐时 2.2e13–2.8e13），ch6–7 播放参考（静音 0，音乐时 2.0e14，两路一致）。反汇编 libxaudio_engine.so：CreatAECHandler 调用 speex_echo_state_init(128,4096)、speex_preprocess_state_init(128,16000)、ctl 24；AECProcess = speex_echo_cancellation + speex_preprocess_run。设备自带 libspeexdsp.so.1.5.0。新增只读诊断 --afe-channels 与 --aec-test：原型音乐下 mic RMS 5309→585（约 19 dB），静音 4843→893；speex_echo_ctl 的 dlsym 取不到，原型用默认 8 kHz 配置；降采样为 3 点平均。原型未进入正式采集路径。文档：.agents/notes/reference/audio-pipeline.md、.agents/notes/reports/语音交互调优与回声消除逆向-第二十一轮.md。
+
+107. 2026-11-01 文档迁移：原 docs/ 下 18 份文档与 notes/ 下 3 份 agent 笔记统一迁入 .agents/notes/，删除 docs/；README、AGENTS.md、CONTEXT.md、操作日志与各报告中的本地 docs/ 链接同步改为 .agents/notes/（外部 docs.volcengine.com 等链接保持原样）。知识索引为 .agents/notes/reference/knowledge.md。设备与程序未改动。
+
+108. 2026-11-01 reports/ 迁移：22 份逐轮报告移入 .agents/notes/reports/，删除 reports/；README、CONTEXT、KNOWLEDGE 与操作日志中的本地 reports/ 链接同步改为 .agents/notes/reports/（外部链接不动）。设备与程序未改动。
+
+109. 2026-11-01 引入 Agent Notes 规范：新增 .agents/notes/README.md 与 README.zh.md（布局与命名、六类封闭分类、何时写、文件内格式、归档与删除、门禁），implemented/AGENTS.md、archived/AGENTS.md，以及 scripts/verify-agent-notes.ps1（校验生命周期/分类/文件名/头部/章节骨架/禁止 INDEX.md）。三份日期笔记改写为规范格式并迁入 implemented/architecture、implemented/feature、proposed/architecture；门禁通过（3 条），并用临时错误样本确认会拒绝错误文件名、状态和章节。参考文档与 reports/ 不在 Agent Note 树内。
+
+110. 2026-11-01 全部文档迁入受控区域：18 份参考文档移入 .agents/notes/reference/（小写 kebab-case，统一 `# Reference:` 头部），22 份报告补 `# Report:` 头部；规范 README/README.zh.md 增加 reference 与 reports 两个受控区域的命名、头部与门禁条款；verify-agent-notes.ps1 扩展为同时校验 Agent Notes、reference、reports。门禁结果：3 条笔记、18 份参考、22 份报告通过。根 README、AGENTS.md、CONTEXT 与知识索引中的路径同步更新。
+
+111. 2026-11-01 材料与工具规范化：research/ 重组为 rom（firmware、recordings、live、third_party）与 temp（rootfs-factory-system0、rootfs-factory-system1-metadata、rootfs-patched、analysis、manifests）；SOURCES.md 迁入 .agents/notes/reference/sources.md。按可再生产性（R0/R1/R2）与敏感度（S0/S1/S2）分类，写入 materials/README.md 与 tools/README.md。34 个工具脚本的路径改为 materials/；ssh-askpass.cmd 与 known_hosts 移入 tools/local/ 并加入 .gitignore；tools/ 不再整体忽略。文档与 AGENTS 指针同步。
+
+112. 2026-11-01 入库范围收敛：根 README、.agents/notes（规范、reference、reports）与 materials/tools 的 README 纳入版本管理；tools 脚本入库，但 zig-portable、python-analysis、7zip-portable、刷机工具与 zip/whl/exe 下载包排除（约 440 MB），恢复步骤写入 tools/README.md。logs/ 改为仅跟踪 operations.md（`logs/*` + `!logs/operations.md`），其余运行日志仍忽略；tools/local/ 与 rom|derived 继续排除。仓库尚未 git init。
+
+113. 2026-11-01 inputs 入库边界：固件来自 open-xiaoai release（公开可下载，squashfs SHA256 已记录），回读镜像/录音/live 快照为设备特定或个人数据，upstream 为公开仓库副本。新增 rom/README.md（来源、校验值、可获取性表）与 tools/Fetch-Inputs.ps1（下载并校验公开固件）；upstream-main-commit.json 补为内容哈希固定点（commit 未记录）。.gitignore 改为忽略 inputs/*，但放行 README 与该固定点文件。
+
+114. 2026-11-01 目录按可复现性重分：derived 迁入 temp/（可删可重算）；inputs 拆为 rom/（公开固件与上游源码，供无音箱复现；zip 与内容固定点入库，squashfs 按需下载）与 private/（凭据、SSH、设备分区镜像/回读、录音、live 快照，不入库）。新增 rom/README.md 与 private/README.md；tools/Fetch-Inputs.ps1 目标改为 rom/；工具与文档路径同步，.gitignore 改为排除 temp/、private/*（放行 README）、rom/*（放行 README、zip、固定点）。Compare-Rootfs、native-codec-symbols、Agent Notes 门禁均通过。
+
+115. 2026-11-01 ROM 入库：确认上游 release 只提供两份 squashfs（37.5 MB + 38.5 MB），整机 boot/system 分区镜像需从设备读取。已下载并校验两份 squashfs 放入 rom/ 并入库（SHA256SUMS 一并提交），去除了对上游链接可用性的依赖；private/inputs/readbacks 保留本机分区与回读镜像，不发布。rom/README 更新来源、许可、解包与“为什么没有整机镜像”的说明；解包产物继续放 temp/。
+
+116. 2026-11-01 入库原则修正：有公开链接的字节不重复入库。rom/ 的两份 squashfs 与上游 zip 改为忽略（本地缓存保留，按需由 tools/Fetch-Inputs.ps1 下载并校验），仓库只提交 rom/README.md、upstream-main-commit.json 与 SHA256SUMS；解包产物仍在 temp/。若上游链接失效，再改为自有 release 镜像。
+
+117. 2026-11-01 tools 瘦身：脚本与工具链分离。tools/ 只保留 47 个 .ps1/.py、README.md 与 local/（凭据）；zig-portable、python-analysis、7zip-portable、刷机工具、curl 头文件、json-c 参考、zip/whl/exe 下载包全部移入 vendor/（整目录忽略）。6 个脚本与 7 份文档中的路径改为 vendor/；构建冒烟通过，Web 产物哈希仍为 1E29E9C7…B348，Python 分析脚本正常。
+
+118. 2026-11-01 去掉 config/：唯一内容 credentials.example.json 是空值模板，不属于私有数据，已并入 .agents/notes/reference/credentials.md 的代码块；真实凭据仍在 private/credentials.json（忽略）。第六轮报告中指向该文件的句子同步更新。
+
+
+119. 2026-11-01 版本库初始化：git init -b main；加入 .gitattributes（脚本与源码统一 LF，PowerShell 保持 CRLF）；首次提交 140 个文件、约 0.73 MB，排除 private/vendor/temp/build/backups/firmware/tools-local/ROM 二进制与运行日志。远端为 https://github.com/GitaiQAQ/xiaoai-sidekick.git（当前为空）。推送因本机无 HTTPS 凭据、SSH 22 端口不可用而未完成，需在本机终端登录后执行 git push -u origin main。
