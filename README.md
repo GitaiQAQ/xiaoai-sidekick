@@ -1,75 +1,296 @@
 # XiaoAI Sidekick
 
-Claude 接续入口：[原厂唤醒逆向与未完成项](.agents/notes/reference/claude-wake-analysis.md)。
+> 大模型驱动的小爱音箱副驾<br>
+> An on-device sidecar for the Xiaomi XiaoAI Speaker Pro (LX06).
 
-当前已知故障：播放音乐时仍会无人呼叫自激活，尚未修复。此前短时判醒不能作为误触发验收通过。最新证据与原厂判醒分析见[第二十三轮报告](.agents/notes/reports/音乐自激活与原厂判醒复核-第二十三轮.md)。
+[![Status](https://img.shields.io/badge/status-experimental-orange)](#功能状态)
+[![Hardware](https://img.shields.io/badge/hardware-LX06-2f6f4e)](#支持的设备)
+[![Server](https://img.shields.io/badge/server-none-2f6f4e)](#设计原则)
 
-原厂逆向进展：已在隔离进程直接初始化、调用原厂两级引擎，并验证一级候选后二级超时拒绝；尚未获得“豆包豆包”模型或完成误激活修复，见[第二十四轮报告](.agents/notes/reports/原厂两级判醒与独立引擎调用-第二十四轮.md)。
+XiaoAI Sidekick 以 Sidecar 方式运行在音箱内部，保留原厂小爱，并扩展本地唤醒、豆包实时语音、网易云音乐、Web 控制台和模型工具调用。它不依赖额外常开的电脑、NAS 或云端中转服务器；音频与模型请求由音箱直接发出。
 
-Current deployment (revision 28): Netease chart and account playlists can queue up to 600 songs in the factory player; a 538-track account playlist was verified end to end. Queued items point at local `302` URLs, and the console resolves a fresh provider URL when the player opens each track, so a long queue no longer dies from CDN URL expiry. The factory player loops the queue itself; the correct `play_mode` for this firmware is `SEQUENCE` (the similarly named `LoopSequence` stops after the last item). The 600 limit comes from the single playlist-detail response and the factory/ubus argument and status sizes, not from a native track cap. Tools come from one registry in the console; the voice client fetches that catalog and forwards calls. The wake acknowledgement uses the Doubao voice, answers are level-matched, and saying the wake word interrupts a reply. A session with no answer closes after 10 seconds. Audio capture and echo-cancellation findings (6 microphone channels plus 2 hardware-aligned reference channels, factory Speex AEC) are in `.agents/notes/reference/audio-pipeline.md`; the AEC prototype measures about 19 dB suppression but is not yet in the live path. Console: http://192.168.100.210:18080/.
+> **项目状态：实验性。** 目前只支持和验证了 LX06 + ROM 1.94.13。刷机有风险，完整原厂功能回归与固件恢复尚未验证。请在动手前阅读[安全说明](#安全与隐私)和[已知限制](#已知限制)。
 
-**大模型驱动的小爱音箱副驾**
+## 目录
 
-以 Sidecar 方式在音箱内运行，保留原厂小爱，扩展多模型对话、聚合音乐与米家控制。
+- [这是什么](#这是什么)
+- [设计原则](#设计原则)
+- [功能状态](#功能状态)
+- [架构](#架构)
+- [支持的设备](#支持的设备)
+- [快速开始](#快速开始)
+- [使用](#使用)
+- [已知限制](#已知限制)
+- [安全与隐私](#安全与隐私)
+- [仓库结构](#仓库结构)
+- [文档](#文档)
+- [参与贡献](#参与贡献)
+- [许可证](#许可证)
+- [致谢](#致谢)
 
-仓库名：`xiaoai-sidekick`。
+## 这是什么
 
-## 当前能力
+XiaoAI Sidekick 是一个运行在小爱音箱 Pro（LX06）机内的轻量副驾程序。它不改写原厂语音服务，而是通过音箱已有的 ALSA、ubus 和播放器接口扩展能力：
 
-- **已验证**：LX06 机内豆包实时语音、本地唤醒、灯环反馈、连续追问，以及 Web 控制台。
-- **已验证**：网易云扫码登录、会话保存与恢复、搜索及账号授权单曲播放。
-- **开发中**：更多模型和音乐来源、歌单与自动续播、模型工具调用、米家设备控制。
+- 本地检测“豆包豆豆”，唤醒后连接豆包实时语音；
+- 在音箱内完成收音、回声消除、灯效、回答播放和连续追问；
+- 提供局域网 Web 控制台，管理语音、播放器和网易云账号；
+- 把网易云榜单/歌单交给原厂播放器播放，保留原厂解码、切歌和循环能力；
+- 通过固定的本地工具接口，让模型调用搜索、歌单、播放控制等能力。
 
-原厂小爱与副驾并存是项目设计目标。当前 SSH 补丁关闭了 OTA；完整原厂功能回归及固件恢复尚未验证。
+它不是固件替换，也不是把原厂小爱“刷掉”。原厂进程仍然运行；当前设计目标是两者并存。
 
-[控制协议](.agents/notes/reference/control-protocol.md) · [项目上下文](.agents/notes/reference/context.md) · [知识索引](.agents/notes/reference/knowledge.md) · [记录规范](.agents/notes/README.md) · [音频与回声消除](.agents/notes/reference/audio-pipeline.md) · [操作日志](logs/operations.md)
+### English overview
 
-最新第十六轮：音箱内 [Web控制台](http://192.168.100.210:18080/) 已上线，网易云扫码登录和会话恢复通过，用户确认《左手指月》正常播放。详见[报告](.agents/notes/reports/Web控制台与网易云登录-第十六轮.md)及[控制协议](.agents/notes/reference/control-protocol.md)。豆包tools和米家控制尚未接入。以下内容含历史状态。
+XiaoAI Sidekick is an experimental on-device sidecar for the Xiaomi XiaoAI Speaker Pro (LX06). It keeps the factory assistant and adds a local wake word, Doubao realtime voice, a LAN Web console, and Netease playback without an always-on server.
 
-## 历史开发记录
+- Local capture, AEC, wake detection, playback and LED feedback run on the speaker;
+- The factory player owns the music queue, decoding, track changes and looping;
+- A small Web service exposes fixed JSON actions and a local tool socket;
+- Credentials, recordings and device readbacks stay out of Git.
 
-最新（第十四轮）：已接入本地“豆包豆包”唤醒、原厂“我在”与收音/思考/播报灯效；真人两轮连续追问获用户确认。修复模板偏移缺陷，仍待补录和广泛误唤醒验证。详见[第十四轮报告](.agents/notes/reports/唤醒反馈与连续对话-第十四轮.md)和[当前操作说明](.agents/notes/reference/kws.md)。最新追问超时小修已安装，未再真人验证；测试后服务已停止，无开机自启。
+The project is hardware-specific, requires a rooted/patched LX06 (ROM 1.94.13), and is not affiliated with Xiaomi, ByteDance or Netease. See [Known limitations](#已知限制), [Security](SECURITY.md) and [Contributing](CONTRIBUTING.md). No license has been declared yet.
 
-以下为各轮历史记录，旧轮“尚未接入”等描述不代表最新状态。
+## 设计原则
 
-目标：保留原厂功能，在音箱内运行轻量适配程序，直连豆包云端，不依赖额外常开电脑。
+| 原则 | 含义 |
+|---|---|
+| 机内优先 | 不依赖常开电脑或外部中转服务；设备自己完成采集、控制和云端连接 |
+| 保留原厂 | 原厂小爱、Mesh、米家和播放器继续存在；Sidekick 只扩展旁路能力 |
+| 最小权限 | 只暴露固定的 HTTP/JSON 和本地 socket 方法，不提供任意 shell 或原始 ubus 透传 |
+| 不转发音频 | 网易云音频由原厂播放器直连 CDN；本机只提供短小的 302 控制响应 |
+| 可回滚 | 写入设备前保存旧文件；部署和撤回步骤写入报告与操作日志 |
+| 文档可复核 | 区分实测、公开资料和推断；每轮结论附命令、哈希和限制 |
 
-## 当前入口
+## 功能状态
 
-- [第一轮分析报告](.agents/notes/reports/LX06-豆包接入分析报告.md)
-- [项目上下文与接续步骤](.agents/notes/reference/context.md)
-- [操作记录](logs/operations.md)
-- [SSH连接](.agents/notes/reference/ssh.md)
-- [ROM 与复现](rom/README.md)
-- [工具脚本](tools/README.md)
-- [研究来源](.agents/notes/reference/sources.md)
-- [机内唤醒词检测（第十二轮）](.agents/notes/reports/机内唤醒词检测-第十二轮.md)，操作见 [KWS 操作说明](.agents/notes/reference/kws.md)。
+| 能力 | 状态 | 说明 |
+|---|---|---|
+| 原厂小爱并存 | 设计目标 | 原厂 `mipns-xiaomi`、`mico_aivs_lab` 保留；完整功能回归未验证 |
+| 本地唤醒“豆包豆豆” | 可用，有限 | MFCC + DTW，安静环境可用；音乐播放时误唤醒仍未解决 |
+| 豆包实时语音 | 已验证 | 回答、连续追问、超时关闭已验证；回答时打断已实现，真人验证有限；使用会产生云端费用 |
+| Web 控制台 | 已验证 | 状态、语音、播放器、灯效、网易云登录与歌单 |
+| 网易云登录/搜索/榜单 | 已验证 | 扫码登录、会话保存与恢复、账号授权音源 |
+| 网易云歌单队列 | 已验证 | 上限 600 首；538 首歌单实测完整入队，原厂播放器循环 |
+| 本地 302 直链刷新 | 已验证 | 队列保存本机 URL，播放时现场签发 CDN 地址，避免直链过期 |
+| 原厂播放器循环 | 已验证 | 正确模式是 `SEQUENCE`；`LoopSequence` 会在末尾停止 |
+| 工具注册表 / 模型工具 | 已验证，部分 | 固定工具注册表；搜索、歌单和播放控制可用；米家设备控制尚未接入 |
+| 音频采集与 AEC | 已接入 | 6 路麦克风 + 2 路播放参考，Speex AEC；音乐下误唤醒仍需继续处理 |
+| 米家/红外控制 | 未实现 | 预留在工具命名空间中，未完成设备验证 |
+| 超过 600 首自动续装 | 未实现 | 长歌单会截断到 600 首 |
 
-SSH补丁已写system0并读回核验，root@192.168.100.210登录成功。原厂boot0/boot1/system1保留。尚未接入豆包或部署新Agent。
+更细的逐轮证据见[报告目录](.agents/notes/reports/)和[操作日志](logs/operations.md)。
 
-关键实测：内核可见128MiB RAM、用户态ELF32 ARM、/data空闲约8.2MiB。共享录音短测成功；原生播放/Mesh状态可读。补丁关闭OTA，不能声称当前所有功能与原厂完全一致。
+## 架构
 
-备份：backups/factory-1.94.13 为采集批次名，不代表所有槽位都是1.94.13。system1实际1.88.221，尾部读取异常，完整恢复仍未验证。不要覆盖原始资料。
+```mermaid
+flowchart LR
+  U[用户] -->|"豆包豆豆"| K[本地 KWS]
+  K --> D[lx06-duplex-armhf]
+  D <-->|Realtime WebSocket| V[豆包语音云]
+  D <-->|ALSA 采集/播放| A[音箱音频]
+  D -->|HTTP/JSON| W[lx06-web-armhf]
 
-目录：backups=原始镜像；firmware=固件；tools=本地工具；research=源码/解包/差异；logs=原始采集和操作记录；reports=报告；docs=上下文；src=后续程序。
+  B[浏览器] <-->|HTTP + SSE| W
+  W -->|ubus| F[原厂 mediaplayer]
+  W -->|302 Location| N[网易云 CDN]
+  F -->|ALSA| A
+  W -->|本地 control.sock| D
 
-rootfs解包有Windows符号链接限制，不能直接从解包目录重新制作固件。详细证据和限制见报告。
+  M[mipns-xiaomi / mico_aivs_lab] -->|原厂语音| A
+```
 
-最新深入报告：[原厂唤醒链路直接分析](.agents/notes/reports/原厂唤醒链路-直接固件分析.md)，含ARM反汇编、内置模型、原生Protobuf协议证据。
+主要进程：
 
-最新进展：[第三轮：会话协议与实机回调验证](.agents/notes/reports/原厂会话与回调-第三轮分析.md)。已只读核对真实唤醒回调，恢复本地会话消息类型；未接管设备行为。
+| 进程 | 作用 |
+|---|---|
+| `lx06-web-armhf` | Web 控制台、JSON API、网易云 provider、本地 302 解析、工具注册表 |
+| `lx06-duplex-armhf` | ALSA 采集、AEC、唤醒、豆包实时会话、回答播放、灯效 |
+| `mediaplayer` | 原厂播放器；拥有队列、解码、切歌、循环和进度 |
+| `mipns-xiaomi` / `mico_aivs_lab` | 原厂语音与云端服务，保持运行 |
 
-最新实证：[第四轮：编码边界与机内程序](.agents/notes/reports/编码边界与机内程序-第四轮.md)。31KB ARM 原生探针及隔离 socket 转发/撤回测试已在音箱通过；[源码与操作范围](.agents/notes/reference/native-probe.md)。未接管真实会话，豆包和第二唤醒词尚未实现。
+Sidekick 只保存曲目元信息和最多 600 个本机 URL，不保存歌曲文件，也不代理音频流。
 
-当前最新：[第五轮：真实会话与唤醒模型](.agents/notes/reports/真实会话与唤醒模型-第五轮.md)。用户配合的真实唤醒上行65条消息解析全通过，用户确认正常回答；两份内置模型完整解包并恢复识别图。观察器已清理，仍未接管会话或接入豆包。
+## 支持的设备
 
-最新实现：[第六轮：原厂动态库与云端传输](.agents/notes/reports/原厂动态库与云端传输-第六轮.md)。机内C程序复用原厂curl/TLS完成证书校验，TLS探针RSS约2MiB；尚未鉴权调用模型。[本地凭据说明](.agents/notes/reference/credentials.md)，私有文件不进入报告或Git。
+| 项目 | 要求 |
+|---|---|
+| 型号 | 小爱音箱 Pro，LX06 |
+| 固件 | 1.94.13（实测） |
+| SSH | 由上游 `open-xiaoai` 补丁开启；本仓库不提供完整刷机镜像 |
+| 内存 | 设备可见约 128 MiB；实际 Web/语音进程需按报告中的 RSS 预算 |
+| 其他型号 | 未验证，不建议直接使用 |
 
-最新进展：[第七轮：本机认证客户端与实时传输](.agents/notes/reports/本机认证客户端与实时传输-第七轮.md)。原厂JSON解析和SSH stdin已实测；实时端点原始TLS收发通过，尚未验证认证/101升级/语音。
+刷机与 SSH 补丁的上游来源、SHA256 和恢复边界见[ROM 与复现材料](rom/README.md)和[SSH 说明](.agents/notes/reference/ssh.md)。
 
-最新深入进展：[第八轮：实时握手与音频分支](.agents/notes/reports/实时握手与音频分支-第八轮.md)，操作见[实时客户端](.agents/notes/reference/realtime-client.md)。仍待真实凭据认证与音频接入。
-最新进展：[机内唤醒词检测（第十二轮）](.agents/notes/reports/机内唤醒词检测-第十二轮.md)。纯 C 离线 MFCC+DTW 检测"豆包豆包"，模板来自 /tmp/doubao_enroll.wav，设备实测阈值 14.7784、现场 30 s 待机 0 次误唤醒；唤醒前不联网。唤醒后真实会话闭环尚未实测。
+> 当前补丁关闭了 OTA。原厂完整功能回归和固件恢复尚未验证；请不要把“SSH 可登录”当成“所有原厂功能已验证”。
 
-## Current status (revision 18)
+## 快速开始
 
-The deployed player card can show title, artist, playlist and queue position. The Web page can browse Netease charts and the logged-in account playlists, and queue up to 600 tracks in the factory player. Previous/next and Doubao playlist tools are included. Web: http://192.168.100.210:18080/. Account playlist listing failed after round 18 because the provider returned a ~728 KiB response; the receive ceiling is now 4 MiB, and the listing, queue metadata, previous/next, pause/resume and search were verified live. A 538-track playlist is queued in full; playlists longer than 600 are truncated. Details: the revision 18 player-queue report, the round-19 playlist-listing fix report, and the round-26/27 local-redirect report.
+这不是一键安装器。开始前请先阅读[部署范围](.agents/notes/reference/web-deploy-scope.md)、[操作日志](logs/operations.md)和上游刷机说明，并在自己的设备上完成分区备份。
+
+### 1. 刷入 SSH 补丁
+
+按[ROM 与复现材料](rom/README.md)获取与 1.94.13 对应的 squashfs，按上游 `open-xiaoai` 流程写入 `system0`，保留 `boot0`、`boot1` 和 `system1`。不要刷写来源不明的镜像。
+
+完成后通过 SSH 确认：
+
+```sh
+cat /usr/share/mico/version
+uname -srm
+```
+
+应看到 LX06 / 1.94.13 和 ARM Linux 内核。设备地址以你的局域网为准，下面的 `<speaker-ip>` 需要替换。
+
+### 2. 准备构建环境
+
+仓库内的构建脚本以 Windows PowerShell 为主，使用 Zig 0.13 交叉编译 ARM/glibc，并链接设备自带 glibc 2.25。工具链恢复、脚本分类和路径约定见[tools/README.md](tools/README.md)。
+
+```powershell
+# Web 控制台
+powershell -NoProfile -File tools/Build-NativeGlibc.ps1 -Web
+
+# 机内语音客户端
+powershell -NoProfile -File tools/Build-NativeGlibc.ps1 -Duplex
+```
+
+产物在 `build/`：`lx06-web-armhf`、`lx06-duplex-armhf`。构建后会执行 ELF 架构和依赖检查。脚本默认使用 Windows 开发目录；如路径不同，传入 `-ProjectDir <repo>`。
+
+macOS/Linux 也可以使用 Zig 0.13 交叉编译，但当前仓库没有打包好的 macOS 脚本；需要准备 curl 7.55.1 头文件、设备 `libc-2.25.so` / `libdl-2.25.so`，并按 `tools/Build-NativeGlibc.ps1` 的参数链接。不要把未经验证的二进制直接部署到设备。
+
+### 3. 部署 Web 控制台
+
+```powershell
+powershell -NoProfile -File tools/Manage-LX06Web.ps1 -Install -Start
+```
+
+如果脚本默认路径与你的仓库不同，同样传入 `-ProjectDir <repo>`。打开：
+
+```text
+http://<speaker-ip>:18080/
+```
+
+Web 只监听局域网；写操作需要页面会话中的 CSRF token 和同源 Origin。控制协议见[control-protocol.md](.agents/notes/reference/control-protocol.md)。
+
+### 4. 配置语音
+
+把豆包实时语音 Key 放到 `private/credentials.json`（权限 0600，`.gitignore` 已排除），或在启动时通过受保护的 stdin/FIFO 传入。Key 不应出现在命令行参数、日志、截图或 Issue 中。
+
+```json
+{
+  "realtime": {
+    "api_key": "<your-key>"
+  }
+}
+```
+
+然后在 Web 控制台启动语音，或使用设备上的 `deploy/start.sh`。默认没有开机自启；重启后需要重新提供 Key。
+
+### 5. 登录网易云
+
+在 Web 控制台点击网易云登录，用网易云 App 扫码。登录会话保存在设备自有目录，权限 0600；退出登录会清除。随后可以搜索、浏览榜单、读取账号歌单并把队列交给原厂播放器。
+
+## 使用
+
+### Web 控制台
+
+- 查看设备、语音、播放器、灯效和网易云状态；
+- 启动/停止语音，查看会话阶段；
+- 暂停、继续、停止、上一首、下一首；
+- 浏览网易云榜单和账号歌单，播放前 600 首；
+- 管理网易云登录和会话。
+
+### 语音
+
+说“豆包豆豆”进入本地唤醒；唤醒后连接豆包实时语音。回答结束或超时后回到待机。音乐播放时原厂播放器与 Sidekick 共用音频设备，AEC 用于降低回声，但误唤醒仍是当前主要未解决问题。
+
+### 本地 API
+
+- `POST /api/v1/command`：页面与外部适配器共用的固定命令；
+- `GET /api/v1/state`：状态快照；
+- `GET /api/v1/events`：SSE 状态事件；
+- `/data/lx06-agent/control.sock`：仅本机工具调用，不对外开放。
+
+详细字段、错误码和权限边界见[控制协议](.agents/notes/reference/control-protocol.md)。
+
+## 已知限制
+
+| 限制 | 影响 |
+|---|---|
+| 音乐下误唤醒未解决 | 无人呼叫时仍可能自激活；不能把短时测试当作验收通过 |
+| 歌单上限 600 首 | 更长的歌单会截断；8428 首歌单需要分批详情管线，当前未实现 |
+| 单曲播放仍走即时直链 | 本次 302 刷新覆盖榜单/歌单队列；单曲接口尚未统一 |
+| 无开机自启 | 设备重启后需要重新启动 Web/语音并提供 Key |
+| OTA 已关闭 | 不能依赖官方 OTA；恢复与回滚需要手动操作 |
+| 原厂完整回归未完成 | 米家、Mesh、闹钟、蓝牙、红外等功能需要逐项回归 |
+| 只验证 LX06 / 1.94.13 | 其他型号和固件版本没有保证 |
+| 依赖云端服务 | 豆包语音会产生费用；网络不可用时语音不可用 |
+
+## 安全与隐私
+
+- 本项目会修改音箱固件并安装 root 权限程序。刷机、分区写入和 SSH 补丁都有变砖风险；请先备份，并确认你能恢复。
+- 不要提交或公开：豆包 API Key、网易云 Cookie/`MUSIC_U`、SSH 密码、设备分区回读、个人录音、局域网地址之外的设备标识。
+- 只播放账号有权播放的音源；不提供 DRM 绕过、试听解锁或第三方音源规避。
+- Web API 只允许固定动作；本地工具 socket 权限为 0600。不要把端口暴露到公网。
+- 发现安全问题请按[SECURITY.md](SECURITY.md)私下报告，不要在公开 Issue 中贴密钥或完整日志。
+
+## 仓库结构
+
+```text
+src/                   机内 C 程序、协议、音频、Web 和工具实现
+web/                   Web 控制台静态资源
+tools/                 构建、部署、诊断、逆向和检查脚本
+deploy/                设备端启动/停止/状态脚本
+rom/                   公开固件来源、校验值与复现说明
+private/               凭据、录音、设备回读和运行时快照（不入库）
+temp/                  解包根文件系统、逆向产物、模型分析（可重算）
+vendor/                本地工具链与第三方依赖（不入库）
+logs/operations.md     按时间顺序的实际操作记录
+.agents/notes/         架构、协议、参考文档与逐轮报告
+```
+
+`private/`、`vendor/`、`temp/`、`build/` 以及固件二进制默认不进入 Git；不要为了“方便复现”把设备特定数据提交上去。
+
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [项目上下文](.agents/notes/reference/context.md) | 当前状态、关键决策和接续入口 |
+| [控制协议](.agents/notes/reference/control-protocol.md) | Web API、状态、事件、工具和权限 |
+| [实时语音客户端](.agents/notes/reference/realtime-client.md) | 豆包 Realtime 协议、音频格式和会话预算 |
+| [音频与回声消除](.agents/notes/reference/audio-pipeline.md) | ALSA 拓扑、6 麦 + 2 参考、Speex AEC |
+| [唤醒词检测](.agents/notes/reference/kws.md) | 本地 KWS 参数、阈值和现场限制 |
+| [部署与恢复](.agents/notes/reference/deploy-revision14.md) | 历史部署范围、回滚文件和边界 |
+| [操作日志](logs/operations.md) | 每次实际改动、测试结果和清理情况 |
+| [报告目录](.agents/notes/reports/) | 逐轮证据；从分析到实机验证 |
+| [知识索引](.agents/notes/reference/knowledge.md) | 参考文档与报告索引 |
+| [研究来源](.agents/notes/reference/sources.md) | 公开资料、上游项目和许可说明 |
+
+## 参与贡献
+
+欢迎提交问题、文档修正、设备兼容性报告和小范围补丁。开始前请阅读[CONTRIBUTING.md](CONTRIBUTING.md)。
+
+特别需要：
+
+- LX06 以外型号的只读兼容性调查；
+- 音乐下误唤醒的负样本与可复现实验；
+- 米家/红外控制的安全接口设计；
+- 长歌单的 `trackIds` / 分批详情方案；
+- 可重复的构建与回归脚本。
+
+请把“实测输出、公开资料、推断”分开写；修改设备状态前说明备份和回滚方案。不要在 PR 中包含密钥、Cookie、个人录音或设备分区镜像。
+
+## 许可证
+
+本仓库目前**没有 `LICENSE` 文件**，因此尚未授予再分发或商用许可。把它作为开源项目发布前，维护者需要选择并加入许可证（例如 MIT、Apache-2.0 或其他）。固件、上游补丁和第三方依赖的版权/许可分别归其原作者，详见[研究来源](.agents/notes/reference/sources.md)和[rom/README.md](rom/README.md)。
+
+## 致谢
+
+- [open-xiaoai](https://github.com/idootop/open-xiaoai)：LX06 SSH 补丁与早期社区研究；
+- 小米小爱音箱原厂固件与硬件；
+- 豆包实时语音、网易云音乐接口及其公开文档；
+- 所有提交现场日志、负样本和回归结果的贡献者。
+
+---
+
+如果这个项目对你有帮助，欢迎先读[项目上下文](.agents/notes/reference/context.md)，再从一个小而可验证的改动开始。

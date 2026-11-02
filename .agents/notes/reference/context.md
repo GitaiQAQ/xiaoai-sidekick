@@ -332,3 +332,9 @@ Agent loop：新增 `src/native_agent_loop.h`，提供 provider 接口（stats/s
 原厂播放器本身支持列表循环，之前是参数名传错。实测 `play_mode` 映射：`SEQUENCE` → `loop_type=1`（列表循环），`LoopSequence` → 2（末尾停止），`LoopTrack` → 0，`LoopRandom` → 3。`lx_music_play_queue()` 使用 `SEQUENCE`；不再需要 Web 轮询重排。
 
 实测：`/r` 回环请求 302，目标 CDN 200（11.9 MB）；局域网请求 403；非法 ID/平台返回 400/404；HEAD 同样 302。538 首歌单实际入队 `queue_total=538`、`requested_total=538`，首曲播放状态 1、`loop_type=1`，Web RSS 约 2.6 MB、可用内存约 28 MB。600 首测试队列被原厂接受（请求 JSON 121 KiB、状态响应 8.5 KiB）；1000 首单次详情请求超过 20 秒。部署二进制 SHA256 `52a954bb3bdcf382b0e543ad38927bbc5cce04cfdd8ecbdb6490ae2001b8ad82`，PID 3940；旧版在 `revision21` 至 `revision28-original`。重启时未带语音 Key，`credentials_loaded=0`，语音启动功能需重新提供 Key 后重启。
+
+## 开源文档入口重写（第二十九轮文档，2026-11-02）
+
+README 已重写为社区入口：项目定位、英文概览、设计原则、功能状态、Mermaid 架构、LX06/1.94.13 边界、刷机/构建/Web/语音/网易云快速开始、已知限制、安全隐私、仓库结构、文档索引、贡献和许可证。历史轮次流水改为报告与操作日志链接；设备地址使用 `<speaker-ip>`。新增 `CONTRIBUTING.md` 与 `SECURITY.md`。
+
+文档明确：AEC 已接入；600 首队列、538 首实测、8428 首未实现；302 刷新只覆盖榜单/歌单队列；OTA 已关闭；无开机自启；仓库尚无 `LICENSE`。本轮只改文档，无设备访问或程序改动。报告见 `reports/开源文档入口重写-第二十九轮文档.md`。
