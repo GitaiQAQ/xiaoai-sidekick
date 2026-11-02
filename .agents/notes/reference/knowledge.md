@@ -50,7 +50,6 @@
 | 20 | `.agents/notes/reports/Agent循环与工具注册表-第二十轮.md` | 工具注册表、provider/host 循环、会话截止 |
 | 21 | `.agents/notes/reports/语音交互调优与回声消除逆向-第二十一轮.md` | 会话结束、应答音色、音量、唤醒策略、打断、AEC 逆向 |
 | 26–28 | `.agents/notes/reports/本地302直链刷新与原生循环-第二十六至二十八轮.md` | 本机 302、600 首队列、原生 SEQUENCE 循环、直链过期修复 |
-| 29 文档 | `.agents/notes/reports/开源文档入口重写-第二十九轮文档.md` | README、CONTRIBUTING、SECURITY 与开源入口整理 |
 
 ## 材料与工具
 
