@@ -1,0 +1,58 @@
+# Report: 本地 302 直链刷新与原生循环（第二十六至二十八轮）
+> 历史验证记录：本文保留对应阶段的实验条件、数据和限制；其中设备进程、部署位置与恢复目录只描述当时状态，不是当前部署说明。当前操作边界见项目的有效 Reference 文档。
+
+## 设计结果
+
+歌单队列不再保存网易云 CDN 直链，而是保存稳定的本机地址：
+
+```text
+http://127.0.0.1:18080/r/netease/1329831232/exhigh.mp3
+```
+
+原厂播放器每次切到一首歌、真正打开地址时，Web 控制台才调用单曲取流接口签发新 URL，并返回 302。因此队列放多久都不受直链有效期影响，音频仍然由音箱直连 CDN，Web 不转发音频。
+
+队列上限从 20 提高到 600。原厂播放器本身支持列表循环；此前我们传了错误的模式名。实测四种 `play_mode` 的映射如下：
+
+| `play_mode` | `loop_type` | 列表末尾行为 |
+|---|---:|---|
+| `SEQUENCE` | 1 | 回到第一首，继续播放 |
+| `LoopSequence` | 2 | 停止 |
+| `LoopTrack` | 0 | 未做末尾验收 |
+| `LoopRandom` | 3 | 未做末尾验收 |
+
+工厂的模式命名是反的：`SEQUENCE` 才是列表循环，`LoopSequence` 播完就停。修正后不需要 Web 轮询重排，循环完全由原厂播放器完成。
+
+## 原有问题及原因
+
+- 只有 20 首：`nc_play_chart()` 请求参数固定 `n=20`，数组也固定 20；这是早期为了避免一次性签发整张长歌单直链而做的限制。
+- 不循环：代码传了 `play_mode: LoopSequence`，原厂日志在末尾打印 `setPlayTrack reach tracklist size,loopingType_ == LoopSequence finish` 并停止。问题在参数名，不是播放器不支持循环。
+
+## 实现变化
+
+- `src/native_netease.h`：新增 `nc_url_segment()`、`nc_local_url()`、`nc_resolve_stream_url()`；`nc_play_chart()` 改为最多 600 首元数据加本机 URL，不再批量请求 `/api/song/enhance/player/url/v1`；`NC_RESPONSE_CAP` 提高到 4 MiB。
+- `src/native_music.h`：`LX_MUSIC_QUEUE_MAX` 32 → 600；`play_mode` 改为 `SEQUENCE`；队列按 300 首分块，首块 `REPLACE_ALL`、后续 `APPEND`，最后 `player_play_index 0` 回到开头。
+- `src/native_web_console.c`：新增仅回环可用的 `/r/` 路由，解析 `provider / track-id / quality.ext`，校验后返回 302；状态与队列缓冲扩大到 32 KiB。
+- `web/app.js`：文案“前20首”改为“前600首”。
+
+## 设备验证
+
+- 回环 `GET /r/netease/1329831232/exhigh.mp3`：302，Location 为新 CDN 地址；目标请求 200，11.9 MB。
+- 局域网访问同一路径：403；未知 provider：404；非数字 ID：400；HEAD：302。
+- 538 首歌单入队：`queue_total=538`、`requested_total=538`，首曲播放状态 1、`loop_type=1`，Web RSS 约 2.6 MB、可用内存约 28 MB。
+- 600 首测试队列被原厂接受（请求 JSON 121 KiB、状态响应 8.5 KiB）；1000 首单次详情请求超过 20 秒，因此上限取 600。
+- 跳到第 538 首并 seek 到末尾：原厂播放器自行回到第 1 首，`queue_index=1`、状态 1；Web 日志没有重排记录，证明循环由原厂完成。
+- 测试结束停止播放，状态 2；原厂 PID 1282/2527 与 Mesh 未变。
+
+## 历史部署记录
+
+- Web SHA256：`52a954bb3bdcf382b0e543ad38927bbc5cce04cfdd8ecbdb6490ae2001b8ad82`
+- `web/app.js` SHA256：`09618e7a9083cb4b7c75e44e4fffa9366f19b8da0fa0c518dcaded87144a68ea`
+- 设备 PID：3940
+- 旧版备份：`/data/lx06-agent/revision21-original/` 至 `revision28-original/`
+
+## 未覆盖范围
+
+- 单次最多 600 首；更长的歌单会截断到 600 首。8428 首歌单需要 `trackIds`/歌曲详情分批管线与约 4.7 MB 元数据，当前未实现。
+- 单曲 `netease_play` 仍使用即时直链，不走本机 302；本次只改歌单/榜单队列。
+- 重启 Web 时本机没有语音 Key，`credentials_loaded=0`；音乐和页面正常，语音启动需重新提供 Key 后重启。
+- Web RSS 约 2–4 MB，设备可用内存约 28 MB；长队列和 4 MiB 响应缓冲会抬高常驻内存。

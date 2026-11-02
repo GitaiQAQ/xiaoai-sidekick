@@ -1,0 +1,42 @@
+# Report: Factory Libraries and Cloud Transport (Round 6)
+
+2026-11-01。本轮已在机内运行自行编写的C程序，复用原厂动态库完成两处HTTPS检查。没有接管原厂唤醒/会话，没有安装运行时或替换库；豆包模型鉴权和语音会话仍未完成。
+
+## 结论与范围
+
+实测确认音箱现有 libcurl、TLS 库可由独立 C 探针调用，并完成两个公开地址的 HTTPS HEAD 请求及证书校验。请求返回 401 和 404；这只证明传输与 TLS 路径工作，不证明鉴权、模型调用或实时语音可用。报告同时记录了 ARM ELF 的 loader 要求及一次错误执行触发的厂商崩溃处理副作用。
+
+## 已实现与实测
+
+`src/native_library_probe.c`通过设备原有加载器执行，动态调用现有libcurl。读取到glibc2.25、libcurl7.55.1、OpenSSL1.0.2l、c-ares1.13.0；easy_init/setopt/perform/send/recv/getinfo/cleanup均存在。
+
+默认模式仅查询版本和符号，strace网络系统调用输出只有程序退出，没有网络调用。最新版本峰值RSS940KiB。TLS模式向两个固定公开地址发HEAD：
+
+| 地址 | curl退出码 | HTTP状态 | 证书校验 | 本次握手耗时 |
+| --- | ---: | ---: | ---: | ---: |
+| Ark chat/completions路径 | 0 | 401 | 0 | 155ms |
+| openspeech根路径 | 0 | 404 | 0 | 104ms |
+
+TLS模式最新峰值RSS1992KiB，不带Key、不发POST、不上传音频，也不打印HTTP正文。以上证明该C程序可用原厂TLS库完成证书及主机名校验，**不证明任何模型或实时会话可用**。该RSS也不是完整Agent的内存预算。请求参数使用与实机同版本的[curl官方7.55.1头文件](https://raw.githubusercontent.com/curl/curl/curl-7_55_1/include/curl/curl.h)，下载副本及许可证保存在PC tools，未安装到设备。
+
+运行前后原厂PID1282/2527保持，Mesh状态正常；临时二进制与trace已清除。日志：`native-libraries-runtime.txt`、`native-tls-runtime.txt`、`native-library-final-health.txt`。
+
+## 构建方式与真实失败记录
+
+Zig直接生成glibc目标的首轮链接触发编译器内部错误；拆开编译证明源码对象正常，故改用项目内最小ARM入口/C桥接，直接链接本地原厂libc-2.25.so与libdl-2.25.so。设备没有被替换任何库。
+
+产物为ELF32/EM_ARM/hard-float，依赖libc.so.6、libdl.so.2，导入版本为GLIBC_2.4。**它没有PT_INTERP，必须显式通过/lib/ld-linux-armhf.so.3运行。** 第一次检查时没有把缺失解释器拦住，误直接执行导致本探针SIGSEGV。原厂两个语音进程未退出，临时探针已清理；随后加入ELF/依赖/运行方式校验并固定显式loader执行，成功。
+
+这次崩溃触发了原厂coredump.sh，发现`/tmp/.core_history/lx06-agent-libr_11`标记。脚本会调用mtd_crash_log归档，仅其返回成功后创建该标记。没有读取或删除厂商归档，未进一步核实其具体存储位置。**因此不能把本轮描述为系统完全无写入或无崩溃日志副作用。** 未自行改写固件，但厂商崩溃处理器运行过。相关失败、清理检查分别保存，未抹去系统历史。
+
+后续探针在main开头设置自身PR_SET_DUMPABLE=0并读回确认；最新运行已验证该状态，且正常退出。没有改全局core_pattern或原厂服务的dump设置。该措施不能覆盖入口执行到main之前的错误，因此部署前的ELF及loader校验仍不可省略。
+
+入口文件`src/arm_glibc_entry.S/c`没有任意应用构造函数支持，只用于当前明确无此需求的小程序，不能直接当作完整C++运行时。构建脚本`tools/Build-NativeGlibc.ps1`，运行包装`tools/Run-NativeProbe.ps1 -Kind libraries|tls`；本报告记录当时的设备操作范围。
+
+## 接下来使用的豆包接口
+
+用户明确答复两种接口都有。主线采用豆包实时语音，方舟文本用于后续文本和工具验证。官方当前[Seeduplex3.0文档](https://docs.volcengine.com/docs/doubao-voice/end-to-end-real-time-voice-full-duplex-version?lang=zh)说明使用新的Realtime事件协议；不能沿用旧版StartSession二进制协议。已核对新路径为`/api/v3/duplex/realtime/dialogue`，支持X-Api-Key；服务版本/权限仍须鉴权实测。
+
+模板见 `.agents/notes/reference/credentials.md`，私有副本为`private/credentials.json`，Git忽略整个private目录。用户需填写方舟Key、模型/接入点ID和语音Key；也可提供已有本地文件路径。`tools/Check-LocalCredentials.py`只输出存在/格式标志，不输出值，不把格式检查等同云端权限验证。尚未取得实际凭据，未做鉴权请求。
+
+下一步把已验证的curl传输和设备现有JSON库整合成受限的认证测试客户端，再实现实时WebSocket事件收发；音频/关键词/米家桥接仍按原目标继续，不用这份传输探针替代完整改造。

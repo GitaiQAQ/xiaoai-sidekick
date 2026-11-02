@@ -20,7 +20,7 @@
 
 12. 已设置 bootdelay=15、boot_part=boot0 并 saveenv，均返回 success；system0 补丁刷写 mwrite success。读取 0x24ac000 字节回电脑，SHA256 与补丁完全一致。原厂 boot0/boot1/system1 未刷写，待断开 USB 并电源重启验证 SSH。
 
-13. 扫描当前电脑同网段 TCP/22，发现 192.168.100.210。SSH 默认凭据成功登录；实读 /usr/share/mico/version 确认 HARDWARE=LX06、ROM=1.94.13；uname -srm 返回 Linux 4.9.61 aarch64。MAC=4c-c6-4c-fa-8f-9f。SSH 主机密钥记录 tools/known_hosts。只读取版本，无进一步分析。
+13. 扫描当前电脑同网段 TCP/22，发现 <speaker-ip>。SSH 默认凭据成功登录；实读 /usr/share/mico/version 确认 HARDWARE=LX06、ROM=1.94.13；uname -srm 返回 Linux 4.9.61 aarch64。MAC=4c-c6-4c-fa-8f-9f。SSH 主机密钥记录 tools/known_hosts。只读取版本，无进一步分析。
 
 14. 完成第一轮SSH系统盘点：内存/MTD/进程/端口/ubus/启动脚本/ALSA，日志按主题存于logs。读取fw_env确认boot0/15。
 15. 本机TLS命令行失败，但音箱curl可联网；通过SSH二进制管道下载Open-XiaoAI源码ZIP及官方7zip23.01到PC。未在音箱安装额外常驻服务。Windows脚本策略阻止直接执行ps1，使用已保存脚本内容作为scriptblock调用；修正SSH stdin为LF避免尾随CR。
@@ -28,7 +28,7 @@
 17. system1从SSH尝试读分区全长失败，实际40MiB，尾128KiB I/O错误；移动失败副本到rom，不当作完整备份。
 18. 执行1秒共享采集到/dev/null，exit0，原拾音PID不变；未保存音频。查询原厂播放/Mesh状态成功；不带凭据探测云端TLS成功但未鉴权。
 19. 原生文本执行、豆包模型调用、音频质量/回声、所有原厂功能回归均未验证。未发声、改音量、改闹钟或执行家电动作；未停止服务。
-20. 完成.agents/notes/reports/LX06-豆包接入分析报告.md（第一轮报告），整理证据、已知限制和后续计划。
+20. 完成.agents/notes/reports/lx06-doubao-integration-analysis.md（第一轮报告），整理证据、已知限制和后续计划。
 
 21. 核对本地KWS README、monitor.rs、kws.rs；新增.agents/notes/reference/wake-routing.md，记录双唤醒方案及资源约束；原报告被占用未更新。本轮未改设备。
 
@@ -36,12 +36,12 @@
 23. PC新增官方Python嵌入版及PyPI Capstone/pyelftools（wheel SHA256已核对）；未在音箱部署。创建ELF符号提取、ARM/PLT注释、模型/GOT分析和protobuf-c解析脚本。
 24. 反汇编确认若干唤醒配置导出为空实现；找到真实回调设置及init_system调用链；确认内置模型默认加载分支。
 25. 从原厂消息库提取12种消息描述，并用实机进程Unix datagram端点交叉核对。实机四个原厂程序/库MD5匹配本地，patched音频库也匹配。
-26. 写入.agents/notes/reports/原厂唤醒链路-直接固件分析.md；未动态注入、停止进程、更换配置或录制环境音。
+26. 写入.agents/notes/reports/factory-wake-path-firmware-analysis.md；未动态注入、停止进程、更换配置或录制环境音。
 
 27. 继续原厂分析，恢复main/init_system回调传参，确认wake=0x19528、asr=0x19740。只读取已定位/proc/1282/mem中的16字节控制指针，与静态回调相符，未改内存。
 28. 解出上行8种type及下行11项跳转表，结合描述符字段偏移、组包存储和原厂日志验证；生成proto2重建文件及证据片段。asr_partial只有final/length，没有text。
 29. 明确libmdspeech含分布式唤醒仲裁，原本地speech组包代码在mipns可执行文件。不能把原始唤醒/确认唤醒误当两个唤醒词，也不能绕开仲裁直接吞事件。
-30. 本轮只读健康检查，Mesh正常、原厂进程不变；未发送控制包或部署新进程。完成.agents/notes/reports/原厂会话与回调-第三轮分析.md并更新上下文。
+30. 本轮只读健康检查，Mesh正常、原厂进程不变；未发送控制包或部署新进程。完成.agents/notes/reports/factory-session-and-callback-analysis.md并更新上下文。
 
 31. 持续工作：按用户要求建立持续目标；45秒元数据观察已结束，没有捕获唤醒，不保存语音载荷。读取原厂SDK常量确认32000/64000为Opus码率常量；继续分析实际编码路径。未改写设备内存、启动项或原厂服务。annotate-native-arm.py增加可选文件参数以分析mico_aivs_lab和SDK。
 
@@ -86,7 +86,7 @@
 67. 现场负样本：--kws-capture 15s 67 窗/8 窗打分/最低 17.0379/0 唤醒；--kws-live 30s 142 窗/2 窗打分/最低 18.9865/0 唤醒；--kws-wav 回放 1854ms 判醒、前滚 4800 采样、无 Key 停在 detection_only。每次运行后 mipns=1282、mico_aivs_lab=2527 不变，临时二进制删除，无 /tmp/lx06-agent-* 残留。
 68. 度量调整缘由：最初 CMN+全维+阈值 17.72 的版本在现场 45s 出现 15 次误唤醒（距离 12.6-15.2）；改为不去均值、c0 去均值后×0.25 作为能量包络、加运行底噪门（10% 分位 + 12dB）后现场 30s/15s 均为 0 次。属实测对比，日志已被后续运行覆盖。
 69. 未验证：对设备说出唤醒词后建立真实会话、上传前滚、播放回答、回到待机这一闭环（需 Key 与现场口述）；未验证他人声音与远场；未做原厂唤醒/米家联动回归。
-70. 新增 .agents/notes/reference/kws.md 与 .agents/notes/reports/机内唤醒词检测-第十二轮.md；二进制 lx06-duplex-armhf 现含 KWS，SHA256 d7898db9aa8eeb0fadb0326ea2e2b22c11da75bfdb5be44f83bfa7f3ea63449a，ELF 校验仍为 ELF32 EM_ARM/无 PT_INTERP/libc+libdl+libpthread。71. 补充现场实测（重要负面结果）：安静期 --kws-live 30s 142 窗/2 窗打分/最低 18.9865/0 误唤醒，--kws-capture 15s 67 窗/16 窗打分/最低 14.4438/0 判醒；但房间持续有人说话时 --kws-live 20s 92 窗/38 窗打分/最低 10.5620，连续两窗低于阈值共 8 次 → 会误唤醒。被别人声命中的跨度 570-910ms、峰值 33-45dB、距离 10.56-14.73，与注册录音最弱一遍（530ms，16.28）同量级，说明 3 模板+MFCC/差分+20% 带宽 DTW 对"任意 0.6-0.9s 连续语音"判别力不足，不是阈值问题。
+70. 新增 .agents/notes/reference/kws.md 与 .agents/notes/reports/on-device-wake-word-detection-12.md；二进制 lx06-duplex-armhf 现含 KWS，SHA256 d7898db9aa8eeb0fadb0326ea2e2b22c11da75bfdb5be44f83bfa7f3ea63449a，ELF 校验仍为 ELF32 EM_ARM/无 PT_INTERP/libc+libdl+libpthread。71. 补充现场实测（重要负面结果）：安静期 --kws-live 30s 142 窗/2 窗打分/最低 18.9865/0 误唤醒，--kws-capture 15s 67 窗/16 窗打分/最低 14.4438/0 判醒；但房间持续有人说话时 --kws-live 20s 92 窗/38 窗打分/最低 10.5620，连续两窗低于阈值共 8 次 → 会误唤醒。被别人声命中的跨度 570-910ms、峰值 33-45dB、距离 10.56-14.73，与注册录音最弱一遍（530ms，16.28）同量级，说明 3 模板+MFCC/差分+20% 带宽 DTW 对"任意 0.6-0.9s 连续语音"判别力不足，不是阈值问题。
 72. 据上一条修正文档措辞：阈值 14.7784 只能在安静环境使用；有人说话时会误唤醒。建议后续安静环境补录 5-10 遍、提高分辨率（40mel/20cepstra/二阶差分）、或把 LX_KWS_MIN_HITS 从 2 提到 3-4；最终判决建议交给小模型，DTW 只做候选筛选。以上建议未实施。
 73. 最终二进制 lx06-duplex-armhf SHA256 0303e2b7ee4955b2c5c27960a387bffd9391b05424a1dc3a182d6c5cfc25e921（与上一条记录的 d7898db9 不同，仅因新增 --kws-dump 与 LX_KWS_MIN_HITS 宏；默认值下生成代码等价，自检数值不变）。--kws-dump 可输出特征供 tools/kws-build-templates.py 使用。74. 结构重构以满足"回到本地待机"：把会话逻辑抽成 run_session()，--kws 现在按"待机→判醒→会话→回到待机"在同进程循环（保留已学到的噪声底，清零 hits），并新增 Run-NativeProbe 的 kws-standby（--kws N，无 Key 时只到 detection_only）。重构后 lx06-duplex-armhf 仍通过 ELF 校验，--kws-score 结果与重构前逐位一致（cluster=0,1,3 intra_max=11.3680 threshold=14.7784）。
 75. 重构后实测：--kws 12（无 Key）在 5.06s 被室内说话声判醒（dist 13.5052/14.2000），停在 wake_detected no_key_stdin detection_only=1，未联网；--kws-wav 回放仍在 1854ms 判醒、前滚 4800 采样。二进制 SHA256 721019add167d8d11b3db2fc3e750f4e7b7cc8dbbf7dda7ca4314ef61354742d。76. 重构后回环验证：直连 --duplex 8（真实 Key）session_ready=1、398 帧上行、session=pass；--kws-wav + 真实 Key（Invoke-DoubaoSmoke -Duplex -KwsWav，模式 --kws-wav /tmp/doubao_enroll.wav）1849ms 判醒→upgrade=101→session_ready=1→preroll_uploaded=4800→1494 帧上行→正常关闭 session=pass。回放里没有提问，模型保持沉默（audio_bytes=0），因此"说话→回答→播放完"这一语音闭环仍未验证。
@@ -101,13 +101,13 @@
 85. 直接分析原厂wakeup.sh/show_led及led ubus，找到wozai.wav和1/2/3灯效。先静态灯/我在短测用户确认；后接入三态灯演示通过。未执行原厂wakeup.sh的播放器/会话操作。
 86. 会话添加同一连接连续追问、mute/unmute、播放完成后8秒/总60秒；第一窗口snd_pcm_delay判断未完成，SIGTERM停止，记录continuous-live-first.txt。修正drain/prepare后第三窗口2次音频完成与followup、105535样本全部写出，用户确认“全都正常”。第二窗口未唤醒即停止。
 87. 最新追问活动改为ASR事件，防环境能量一直重置计时；21策略检查通过，ELF/构建通过，安装D46ABEA0...，该小修未再真人验证。已停自有服务、原厂PID1282/2527/Mesh正常。Manage工具Status/Stop改为只做对应操作，上传先验SHA再替换；修复start.sh行尾CRLF导致一次启动127（未开会话），改LF后启动正常。
-88. 更新.agents/notes/reference/kws.md（旧文归档KWS-revision13.md）、DEPLOY_REVISION14.md、.agents/notes/reports/唤醒反馈与连续对话-第十四轮.md及上下文；无开机自启/刷固件/新录音落盘。剩余：补录、真实负样本、最新8秒静默关闭、同时小爱灯效仲裁、原厂全功能回归。
+88. 更新.agents/notes/reference/kws.md（旧文归档KWS-revision13.md）、DEPLOY_REVISION14.md、.agents/notes/reports/wake-feedback-and-follow-up-dialogue.md及上下文；无开机自启/刷固件/新录音落盘。剩余：补录、真实负样本、最新8秒静默关闭、同时小爱灯效仲裁、原厂全功能回归。
 
 89. 工具能力盘点：只读ubus方法签名，输出tools-capability-inventory.txt；编制.agents/notes/reference/tools-roadmap.md，明确方法存在与实测控制的区别。未更改音量/播放/闹钟/外设。
 
-90. 聚合音乐评估：实机可用RAM43784KiB、/data8228KiB、DLNA info0；静态确认原厂libffmpeg音频/网络组件，保存music-architecture-runtime.txt。查阅MA/Navidrome/XiaoMusic/MusicFree一手文档，完成.agents/notes/reports/聚合音乐环境-方案评估.md。未播放音频、未安装、未登录音乐账户。
+90. 聚合音乐评估：实机可用RAM43784KiB、/data8228KiB、DLNA info0；静态确认原厂libffmpeg音频/网络组件，保存music-architecture-runtime.txt。查阅MA/Navidrome/XiaoMusic/MusicFree一手文档，完成.agents/notes/reports/aggregated-music-environment-assessment.md。未播放音频、未安装、未登录音乐账户。
 
-91. 清理可行性只读审计：记录mount/df/meminfo/目录大小/日志名字/RSS/zram状态。未读日志正文，未删除/停进程/改日志轮转/启用swap。报告机内空间与内存清理评估.md；优先机内流式轻量设计，当前空间未满。
+91. 清理可行性只读审计：记录mount/df/meminfo/目录大小/日志名字/RSS/zram状态。未读日志正文，未删除/停进程/改日志轮转/启用swap。报告device-storage-and-memory-audit.md；优先机内流式轻量设计，当前空间未满。
 
 92. 音乐实现进行中：新增src/native_music.h/client.c与回环HTTP测试源native_music_stream_test.c，构建Music目标通过；尚未上传运行或做流式实测。用户中途明确接受播放URL进原厂日志，取消为隐藏URL设计的代理要求，改直连播放。
 
@@ -115,7 +115,7 @@
 
 94. 修正音乐测试灯残留：led显示type3且无测试进程，手动shut L3后状态为空，保存music-led-residual-cleanup.txt。测试脚本cleanup仅在播放器仍标识lx06-direct-stream时撤销L3，避免shut_all。制定NETEASE_ACCOUNT_PLAN.md并核对上游模块，未请求/保存网易云登录会话。
 
-95. 新增机内Web控制台、HTTP+JSON v1/SSE、二维码本地渲染与网易云原生适配；部署范围见.agents/notes/reference/web-deploy-scope.md。保留语音旧版build/revision16-original。
+95. 新增机内Web控制台、HTTP+JSON v1/SSE、二维码本地渲染与网易云原生适配；部署范围见.agents/notes/reference/deployment-and-recovery.md。保留语音旧版build/revision16-original。
 96. 用户扫码确认；账号验证成功，0600会话725字节。Web升级重启后刷新验证恢复登录，不记录身份或Cookie。
 97. 搜索并播放用户指定《左手指月》萨顶顶536096151，exhigh请求，拒绝试听；时长230544ms、进度增长，用户确认声音正常。实际码率和FLAC未验证。
 98. 最终HTTP检查通过，见logs/web-http-validation.txt。真实助手曾运行，收尾voice.stop成功，音乐继续。Web保留、无启动项修改。报告第十六轮记录限制。
@@ -134,7 +134,7 @@
 
 105. 2026-11-01 18:30-19:00 语音交互调优。新增 session_end 工具（播完最后一句回待机，本地工具链路验证）；唤醒应答换成豆包音色（--make-ack 音频注入生成，归一化峰值 30000，feedback_ack 优先读 wake_ack.wav）；回答 PCM 乘 LX_ANSWER_GAIN=250%（峰值约 −8.5 dBFS）；音乐播放时连续命中 3→4，第 3 个命中暂停播放器 2.2 秒确认；新增唤醒词打断（barge_in，未真人验证）。部署 Web 1E29E9C7…B348、Duplex 9A3DB99D…53F3，Web PID 3662。现场反馈音乐下仍有误唤醒/漏唤醒。
 
-106. 2026-11-01 19:00-19:20 原厂 AEC 逆向与原型。实测 hw:0,3 8 通道：ch0–5 麦克风（静音 RMS 3.8e12–5.1e12，音乐时 2.2e13–2.8e13），ch6–7 播放参考（静音 0，音乐时 2.0e14，两路一致）。反汇编 libxaudio_engine.so：CreatAECHandler 调用 speex_echo_state_init(128,4096)、speex_preprocess_state_init(128,16000)、ctl 24；AECProcess = speex_echo_cancellation + speex_preprocess_run。设备自带 libspeexdsp.so.1.5.0。新增只读诊断 --afe-channels 与 --aec-test：原型音乐下 mic RMS 5309→585（约 19 dB），静音 4843→893；speex_echo_ctl 的 dlsym 取不到，原型用默认 8 kHz 配置；降采样为 3 点平均。原型未进入正式采集路径。文档：.agents/notes/reference/audio-pipeline.md、.agents/notes/reports/语音交互调优与回声消除逆向-第二十一轮.md。
+106. 2026-11-01 19:00-19:20 原厂 AEC 逆向与原型。实测 hw:0,3 8 通道：ch0–5 麦克风（静音 RMS 3.8e12–5.1e12，音乐时 2.2e13–2.8e13），ch6–7 播放参考（静音 0，音乐时 2.0e14，两路一致）。反汇编 libxaudio_engine.so：CreatAECHandler 调用 speex_echo_state_init(128,4096)、speex_preprocess_state_init(128,16000)、ctl 24；AECProcess = speex_echo_cancellation + speex_preprocess_run。设备自带 libspeexdsp.so.1.5.0。新增只读诊断 --afe-channels 与 --aec-test：原型音乐下 mic RMS 5309→585（约 19 dB），静音 4843→893；speex_echo_ctl 的 dlsym 取不到，原型用默认 8 kHz 配置；降采样为 3 点平均。原型未进入正式采集路径。文档：.agents/notes/reference/audio-pipeline.md、.agents/notes/reports/voice-interaction-and-aec-analysis.md。
 
 107. 2026-11-01 文档迁移：原 docs/ 下 18 份文档与 notes/ 下 3 份 agent 笔记统一迁入 .agents/notes/，删除 docs/；README、AGENTS.md、CONTEXT.md、操作日志与各报告中的本地 docs/ 链接同步改为 .agents/notes/（外部 docs.volcengine.com 等链接保持原样）。知识索引为 .agents/notes/reference/knowledge.md。设备与程序未改动。
 
@@ -163,7 +163,7 @@
 
 119. 2026-11-01 版本库初始化：git init -b main；加入 .gitattributes（脚本与源码统一 LF，PowerShell 保持 CRLF）；首次提交 140 个文件、约 0.73 MB，排除 private/vendor/temp/build/backups/firmware/tools-local/ROM 二进制与运行日志。远端为 https://github.com/GitaiQAQ/xiaoai-sidekick.git（当前为空）。推送因本机无 HTTPS 凭据、SSH 22 端口不可用而未完成，需在本机终端登录后执行 git push -u origin main。
 
-120. 2026-11-01 采集路径接入 AEC：新增 src/native_capture.h，默认读 dsnoop Capture 8 通道（ch0 麦克风、ch6 参考），3 点平均降到 16 kHz，128 样本一帧跑 Speex AEC + 预处理，输出同时供 KWS 与云端上行；8 通道/库/状态不可用时回退 mico_record，--no-aec 与 LX06_AEC=0 可强制回退。AEC 生效时音乐下连续命中为 3，未生效仍为 4。实测（音量 30、热歌榜）：抑制 52566→664（约 38 dB）；音乐下 20 秒 AEC 开 0 次误唤醒、关 2 次；CPU 19.75%→21.0%，RSS 2060→2288 kB。顺带修复 Web 控制台 daemon 占用 SSH stdin 导致启动不返回的问题（stdin 指向 /dev/null），Manage-LX06Web.ps1 -Start 补 SSH_ASKPASS。Web PID 1014、语音 PID 1344 在跑；真人音乐下唤醒未测。报告见 .agents/notes/reports/采集路径回声消除接入-第二十二轮.md。
+120. 2026-11-01 采集路径接入 AEC：新增 src/native_capture.h，默认读 dsnoop Capture 8 通道（ch0 麦克风、ch6 参考），3 点平均降到 16 kHz，128 样本一帧跑 Speex AEC + 预处理，输出同时供 KWS 与云端上行；8 通道/库/状态不可用时回退 mico_record，--no-aec 与 LX06_AEC=0 可强制回退。AEC 生效时音乐下连续命中为 3，未生效仍为 4。实测（音量 30、热歌榜）：抑制 52566→664（约 38 dB）；音乐下 20 秒 AEC 开 0 次误唤醒、关 2 次；CPU 19.75%→21.0%，RSS 2060→2288 kB。顺带修复 Web 控制台 daemon 占用 SSH stdin 导致启动不返回的问题（stdin 指向 /dev/null），Manage-LX06Web.ps1 -Start 补 SSH_ASKPASS。Web PID 1014、语音 PID 1344 在跑；真人音乐下唤醒未测。报告见 .agents/notes/reports/capture-path-echo-cancellation-integration.md。
 
 121. 2026-11-01 AEC 第二轮修正（真人唤醒打通）：现场仍唤不醒，用新增的 --mic-compare 对同一段真人语音并行打分。发现 (a) 本机库导出的是 speex_echo_ctl，不是 speex_echo_state_ctl，过去采样率一直停在默认 8 kHz；修正为 16000 后 ch0 的 AEC 语音距离 13.3→9.6。(b) 单麦在音乐下过不了阈值，改为 ch0–ch5 六麦平均后 12.05→11.66（阈值 12.5048）。(c) 预处理损伤语音约 2.5 分，但去掉后音乐残留降到 11.0 会误唤醒，保留。(d) 音乐残留与语音距离重叠，加入音乐下阈值 15.0 + 2 连击候选暂停播放器 2.2 秒做第 3 窗确认，6 秒冷却。部署后两次真人“豆包豆包”以 12.5082、14.6845 确认唤醒，会话建立、音乐恢复，用户确认可用；同一实例 2 次未确认暂停。高音量/远场/打断/长时间稳定性未测。报告与 audio-pipeline、kws、context 已同步。
 
@@ -181,6 +181,18 @@
 
 126. 2026-11-01 按用户要求准备 GitHub/Claude 交接提交：新增 reference/claude-wake-analysis.md 长期入口，根 README 与上下文链接；仅纳入源码、工具、报告、规范和公共资料元数据，私有凭据/录音/设备备份/固件/工具链/构建产物/运行日志继续忽略。准备便携 Git（vendor内，不入库）核对真实差异；本机 HTTPS 推送无登录凭据，改用已有授权 GitHub 连接发布。Web/Duplex ARM构建与ELF检查、Notes门禁通过；误激活未修复，发布完成以最终远端验证为准。
 
+127. 2026-11-01 第二十五轮（macOS）：按用户确定的“逆向原厂方案、装载自有小模型”路线还原 soil 声学网络二进制格式（类型码表、组件字段、W 为 out×in），重写 tools/native-model-am.py，两份原厂 am 逐字节往返一致；新增 tools/native-model-forward.py（numpy MFCC/前向/FST Viterbi），TTS“小爱同学”一级 4/5 走通、8 条负例全拒，二级全拒；前端与原厂打分未对齐，非准确率。静态确认 RiceEngineInit 在 state+0x68 非空时解析自有模型缓冲，可绕过 Paddy（未上机）。分析环境 vendor/py（Python3.9 venv，capstone/pyelftools/numpy，忽略）。设备只读核对一次：原厂 PID1282/2527、TracerPid0、Duplex 哈希未变；Web PID1212 哈希 4f8c5792…24b1ce 与记录不符待查。无上传、运行或写入，未采集现场声音；原厂权重与解码结果仅在 temp/。误激活未修复。报告见 .agents/notes/reports/factory-wake-model-format-and-macos-inference.md。
+
+128. 2026-11-01 按用户要求新增 .agents/notes/reference/wake-model-primer.md：面向前端背景的唤醒模型入门（采样、DFT/FFT、分帧加窗、MFCC/CMVN、TDNN、先验与 Viterbi、两级判醒、am 格式、自定义模型装载、训练与数据），其中 JS DFT 与 DataView 解析原厂 am 头部的示例已在本机 Node 实跑，输出与文中一致；knowledge.md 索引同步。仅文档，无设备操作。另启动合成语料子任务（豆包豆包正例、相近词与普通语句负例，输出 temp/analysis/tts-corpus/，工具链在 vendor/），结果待汇总。
+
+129. 2026-11-01 新增 tools/lx06-record.py：经 SSH 让音箱 arecord 读共享 dsnoop Capture（8ch/48k/S32），原始流直接写到本机 private/inputs/recordings/wake-corpus/（忽略），离线转 16k 8ch 与六麦混音 wav；设备不写文件。只读确认 /tmp 56 MiB 可用、原厂 PID1282 在、Web PID1212 在。3 秒冒烟（已删）后录第 1 段 s1-pos-quiet 300 秒：无 overrun、ssh_rc0，六麦 RMS 约 −54 dBFS、峰值 0.042；能量切分得到 109 段活动，参考通道 104–115 秒有放音。未标注、未训练。
+
+130. 2026-11-01 续录：s2-music-silent 300 秒（音箱放歌、无人说话），参考通道仅约 0.5 秒静音，六麦 RMS 约 −38 dBFS、峰值 0.40；arecord 报 1 次约 0.1 ms overrun，参考通道未见跳变。随后 180 秒一段原以为是音乐下说豆包豆包，用户纠正当时并未开口，已改名 s2b-music-silent 作为纯音乐负例（无 overrun，峰值 0.16；离线回声估计后残差中的 21 段“候选活动”因此是歌曲人声或回声残留，说明简单能量检测会把音乐误当说话）。均在 private/ 忽略目录，设备无写入。
+
+131. 2026-11-01 重录 s3-music-pos 240 秒（音乐下说豆包豆包），峰值 0.36、六麦 RMS 约 −38 dBFS，arecord 报 overrun。离线频域自适应回声估计约压低 10–11 dB；以 s2b 纯音乐的 99.9 分位为门限，s3 仅有 7 段短暂超出（最明显约 84 秒、105 秒），远少于计划的 10 遍，说明音乐下人声被掩蔽，简单能量法无法可靠定位；内容待用户确认或 ASR/人工标注。
+
+132. 2026-11-01 回答“录音是哪端、能否录回声消除后版本”：录音全部来自音箱 6 麦 + 参考通道（arecord 经 SSH 流到 Mac），不是 Mac 麦克风。新增 tools/lx06-aec-offline.c，直接 include src/native_capture.h，在 Mac 上用 Homebrew speexdsp 1.2.1（brew install speexdsp）对原始 8ch 录音重放设备同一套降采样/六麦平均/Speex AEC/预处理，输出 *.aec16k.s16/.wav（private/ 忽略）。纯音乐两段 AEC 后中位约 −76/−80 dBFS（混音约 −39/−42），回声压低约 37 dB，与第二十二轮设备实测约 38 dB 同量级；s3 在 AEC 后超出纯音乐 99.9 分位的片段集中在约 92–220 秒、可分成约 10 组，与用户说 10 遍一致（未逐条人工确认）。设备 libspeexdsp.so.1.5.0 构建（定点/浮点）未核实，离线结果为近似。设备无写入。
+
 133. 2026-11-01 23:10-23:20 音乐队列播放中断诊断（只读）。用户反馈播放中“连接失败”。实读 /var/log/messages：22:50:06 起原厂播放器按队列顺序播放 5 首，23:15:17 第 6 首自动切换时开始连续 HTTP 403；23:15:17.941-23:15:21.629 共 10 次 `libvlc_err_http_code=403`、`handle_play_error_event err code:-10102 detail:403`，队列中剩余 10 首全部失败；随后 `set Play Track failed by every track in tracklist couldnot get play url`，原厂播报“播放失败，请检查网络或换一个试试吧”，状态回 0。所有失败 URL 的路径时间戳均为 `20261101231505`（23:15:05 到期），而首批 URL（22:50:06 播放）也带同一时间戳，说明 20 首歌的直链是在入队时一次性签发的同一批、约 25-30 分钟有效期；队列播放超过有效期后剩余直链统一失效。网络侧正常：Wi-Fi RSSI -45 dBm、ping 0.28 ms、DNS 7-14 ms，播放器 TCP 连接 m801/m701.music.126.net 成功后才收到 403；Mac 复取同一直链同样 403（openresty），排除音箱 Wi-Fi/本机网络故障。代码侧 `src/native_netease.h` 的 `nc_play_chart()` 一次取 20 个 URL 后交给原厂 `player_play_music`，没有按曲目刷新或续期。未修改程序、播放器或网络配置；设备仅执行只读日志/进程/网络查询。
 
 134. 2026-11-01 23:45-00:25 第二十六轮：本地 302、100 首队列与顺序循环。新增 `/r/<provider>/<track-id>/<quality>.<ext>` 路由，仅接受回环来源；按路径参数现场调用网易云单曲取流并返回 302（`Cache-Control: no-store`）。`nc_play_chart()` 不再批量签发 20 个直链，改为最多 100 首元数据 + 本机 URL；`LX_MUSIC_QUEUE_MAX` 由 32 调到 100，`app.js` 文案改为“前100首”。新增 Web 主循环 2 秒播放观察：原厂 `LoopSequence` 末尾日志明确 `setPlayTrack reach tracklist size,loopingType_ == LoopSequence finish` 并停止，因此检测到自然播完后用同一批本机 URL 重新入队；手动停止会禁用重排。实测：回环 `/r` 302 且目标 200/11.9MB，局域网 403，非法 ID/平台 400/404，HEAD 302；热歌榜 `queue_total=100`，曲目列表 100 条，首曲播放状态 1；跳到第 100 首 seek 末尾后 `music_loop_requeue ok=1 total=100`，回到第 1 首、状态 1。Web 新 SHA256 `92dd6210092a55eefdcee9af860ea00ac2f157c73495bb5abea79292d105df97`，PID 1325；旧版备份 `/data/lx06-agent/revision21-original/`，`app.js` 新 SHA256 `09618e7a9083cb4b7c75e44e4fffa9366f19b8da0fa0c518dcaded87144a68ea`。因本机无语音 Key，重启时 `credentials_loaded=0`；音乐与页面正常，语音启动需重新提供 Key 后重启。原厂 1282/2527 与 Mesh 未变，播放测试已停止（status 2）。
@@ -189,4 +201,34 @@
 
 136. 2026-11-02 00:25-00:45 扩大歌单队列并修正分页。用户要求完整歌单。实测原厂单次 `player_play_music`：538 首请求 JSON 108,717 B、状态 7,631 B 通过；600 首 121,241 B、状态 8,500 B 通过；1000 首单次详情请求 20 秒超时。`/api/v6/playlist/detail` 的 `s` 参数实际不翻页，分页会重复前 200 首，因此回退为单次取 600 首并把 `NC_RESPONSE_CAP` 提到 4 MiB。`LX_MUSIC_QUEUE_MAX` 调到 600；队列按 300 首分块，`REPLACE_ALL` + `APPEND` + `player_play_index 0`；状态/队列缓冲扩到 32 KiB；`web/app.js` 文案改为“前600首”。实机：538 首歌单 `queue_total=538`、`requested_total=538`，首曲状态 1、`loop_type=1`，Web RSS 约 2.6 MB、可用内存约 28 MB；600 首测试队列被接受；测试播放已停止（status 2）。最终 Web SHA256 `52a954bb3bdcf382b0e543ad38927bbc5cce04cfdd8ecbdb6490ae2001b8ad82`，PID 3940；备份 revision28-original 保留上一版。仍不支持 8428 首全量：需要 trackIds/歌曲详情分批与约 4.7 MB 元数据，未实现。原厂 1282/2527 与 Mesh 未变，Web 仍以空 Key 启动。
 
+137. 2026-11-02 00:10-01:40 第二十九轮（macOS，无设备访问）：自有“豆包豆包”模型训练。新增 tools/native-model-pack.py（BINN 容器/TransitionModel/FST/prior 写出器，原厂两容器逐字节重写一致）、tools/wake-label.py（能量切分 + paraformer/SenseVoice 双转写）、tools/wake-review.py（本地试听标注页，导出 labels.csv）、tools/wake-train.py（TTS + 离线 AEC 真人数据，Conv1d 同构原厂一级 TDNN，强制对齐两次，打包原厂格式并评估）；native-model-forward.py 改为原始 MFCC。新增依赖：vendor/train-venv（torch 2.8.0）、vendor/tts-models/asr 下 SenseVoice int8（约 163 MB），均忽略。三版模型 temp/analysis/wake-train/{d96,d96-full,d96-v3}/model.binn（各 639597 B，SHA256 3c05ce62…87ade / 79058a67…6c6e9 / bc5d9bc4…2bcf8）。d96-v3 阈值 0：TTS dev 正例 0.79、相近词 0.23、普通句 0.04，纯音乐 s2b/s2 误触发 0，s3 ASR 正例 13 段命中 7、另 12 次未确认触发。真人标签未人工确认，不能上线。录音、片段、权重均在 private/、temp/。报告见 .agents/notes/reports/custom-wake-model-training-and-macos-evaluation.md。
+
+138. 2026-11-02 01:40-03:45 第二十九轮续（macOS，无设备访问）：tools/wake-train.py 增加难例挖掘（每轮用当前网络筛被接受的训练负例加权）、相近词前缀（豆/豆包/豆包豆）改标关键词 pdf、变速 0.85–1.35、`--level 2`（原厂二级容器模板，D=160）、`eval --verify` 级联评估。新模型 temp/analysis/wake-train/{d96-v4,d96-v5,l2-d160}（SHA256 ed32c7a9… / de899046… / 5945e591…；l2 1678701 B，导出差 5.3e-06）。阈值 0 实测：d96-v5 s3 ASR 正例命中 12/13（含以前漏掉的快速连说）、其他触发 14、dev 正例 0.79、相近词 0.23；d96-v5+l2-d160 级联 dev 正例 0.53、相近词 0.04、同音变调 0.33、s3 命中 5/13、其他 2；纯音乐 s2b/s2 全部 0 误触发。review/labels.csv 仍未导出，s3 标签仍是 ASR，级联阈值未定，未上机。详见第二十九轮报告第 6 节。
+
 139. 2026-11-02 第二十九轮文档：按用户要求重写面向开源社区的 README，新增 CONTRIBUTING.md 与 SECURITY.md。README 重组为定位、英文概览、设计原则、功能状态、Mermaid 架构、LX06/1.94.13 边界、刷机/构建/Web/语音/网易云快速开始、已知限制、安全隐私、仓库结构、文档索引、贡献、许可证和致谢；历史轮次改为 reports/operations 链接，设备地址改为 `<speaker-ip>`。明确 AEC 已接入、600 首队列/538 首实测/8428 首未实现、302 只覆盖榜单与歌单、OTA 关闭、无自启、尚无 LICENSE。检查 README 相对链接存在、代码围栏配对、`git diff --check` 通过；无设备访问、无代码/固件改动。文档与 notes 随本轮提交入库。不单列报告。
+
+140. 2026-11-02 10:57-12:20 第二十九轮续二（macOS，无设备写入）：导入用户人工标注 review/labels.csv（147 pos、7 neg、1 skip，未标按听不清排除），训练脚本改为人工标注优先、未标不回退 ASR。实测阈值 0：d96-v5（ASR 训练）s3 片段 27/58、合并句 17/35、其他触发 0、纯音乐 0/0；d96-v6（89 条真人正例×8）片段 15/58、合并句 11/35、s2b 误触发 4（1.6-12.1 s）；d96-v7（×2）片段 26/58、合并句 23/35、s2b 误触发 3。推断真人正例覆盖变广后模型更宽松，音乐瞬态被误判；暂定 v5 做真机验证。本机恢复 ARM 构建链（vendor/zig 0.13，忽略），新增 src/native_wake_model_probe.c 与 build/lx06-wake-model-probe-armhf（8756 B），走原厂 +0x68 分支装载自有容器；fixture temp/analysis/wake-probe/s3.aec16k.s16le。探针未上机，无 /data、原厂进程或启动项改动。
+
+141. 2026-11-02 第三十二轮存储只读调查：/data UBIFS 可用1332KiB、使用率90%；system0 SquashFS ro、无overlay。历史部署revision17–28十二份逻辑10620KiB，保留两份候选减少8844KiB，实际闪存收益估3–6MiB（推断待df验收）；固定分区精简ROM对/data直接收益0。未删除/刷写/重分区，报告 speaker-storage-and-rom-size-assessment.md。调查收到部署资源压力通知后停止遍历。部署探针大PCM占/tmp导致OOM并重启原厂进程，已由部署代理回收PCM并改流式输入；详细事故与恢复后续由第三十轮报告记录。
+
+142. 2026-11-02 按用户明确授权清理音箱全部历史部署备份：核对并删除 /data/lx06-agent/revision17-original 至 revision28-original 共12目录，跳过/拒绝符号链接；sync后df /data可用1224→7468KiB，释放6244KiB（6.10MiB），使用率91%→42%，复查revision*-original无剩余。部署代理确认无/data并发写入后执行，清理完成已通知其继续部署。未删除当前程序、模型、认证/状态、Mesh或本地backups原始资料。用户新规则同步AGENTS/context：以后恢复材料在Mac private/deploy-recovery/，设备不保留历史部署目录。
+
+143. 2026-11-02 第三十轮部署完成：正式Duplex123876B SHA256 be273e5494386b815b5aa5937d1fe798429211e2c2f8d767945281e200cb3995，默认原厂引擎加载自有v5+l2，flag1触发，加载失败不回退DTW。原厂正例内置/回喂帧分数一致；ARM s3 240秒确认8，纯音乐480秒候选/确认0；正式路径s3回放确认8、集成s2b确认0。缺Key，daemon未启动。恢复材料在Mac private/deploy-recovery/r30，旧程序哈希核对，未创建设备历史副本。大PCM写tmp曾触发OOM/messagingagent被杀及原厂监护重启，已改stdin流式、清理/tmp/wake-model-r30，最后/data5288KiB、MemAvailable38092KiB；原厂米家Mesh播放器存活、ubus正常，完整现场功能未测。报告 custom-wake-model-isolated-deployment.md。
+
+144. 2026-11-02 第三十三轮ROM容量核验：本地原厂SquashFS37500699B/35.76MiB、SHA256与清单一致；设备只读mtd4头96B得当前补丁ROM bytes_used38449988B/36.67MiB，40MiB槽容量差3493052B/3.33MiB，非物理可写尾部验证。原局部解包24文件，vendor/py安装dissect.squashfs后完整读取1348普通文件/85.65MiB到temp/rootfs-factory-full（链接权限设备节点未重建，不作为刷机打包源）。Duplex+两模型2.33MiB，初筛有望放现有ROM余量，未产新镜像或刷写。Homebrew squashfs安装涉及依赖升级，已中断，改仅vendor/py依赖。报告 rom-capacity-and-rootfs-extraction.md。
+
+145. 2026-11-02 用户提供局域网凭据端点后，安全获取并验证JSON对象，保存private/credentials.json（0600、git忽略），未输出凭据内容。已授权部署代理通过既有受保护流程启动正式语音服务，并落实无Key本地唤醒/回应、接通后生成缺配置提示音；当前仅凭据获取完成，启动及现场效果待验收。
+
+146. 2026-11-02 第三十一轮正式启用：安全stdin凭据启动Duplex，最新PID2762/Web2289；现场flag1/ack/云101/session_ready/music_search/306950B播放通过，部分一级仍被二级拒绝。无Key本地常驻、Web启动入口放行、收到+缺配置提示分支无cloud验证通过（手动分支非现场关键词验收）。最终Duplex a4553ad7…10720f6e，Web8c2ee543…93a05d8f；仅统计采集能量不保存音频。恢复Macprivate/deploy-recovery/r31，设备tmp已清，/data5544KiB。收到短音频ASR确认但provider无done，缺提示done成功。报告 local-response-without-credentials.md。
+
+147. 2026-11-02 B共享类别完成：KW共享四声学pdf、保留10pdf输出和完整8步图，--shared-keyword可选默认旧行为。D96 6+6+12epochs真人copies2，2090秒；BINN639597B/ca420e4a…982e8bd2，导出差3.81e-06、容器往返/转移图/未使用prior/dev顺序检查通过。阈值0 dev正例25/38、相近词33/191、普通0/70；s3片段22/58、合并句17/35、其他0，音乐s2b3/s2零。未缩体积、不优于v5核心误触发，不部署。报告 shared-state-wake-model-training.md，同轮另有语音启用报告以文件名区分。
+
+148. 2026-11-02 按用户要求新增reference/wake-recall-fix-plan.md，记录现场大概率难唤醒、已有二级拒绝证据、原厂score/Mac margin/conf阈值不可混用、隔离参数读回与同fixture比较、候选部署及独立现场验收方案。score-threshold静态解析字段与实际作用待实测；未把本note称为调优完成。context同步当前首要问题。本次主代理仅文档变更。
+
+149. 2026-11-02 第三十四轮部署代理完成可回滚易触发档：两级minSelfLoop0、二级FSTcost3，一级2.25、权重/完整关键词/二级保留；score-threshold0读回但无效。ARM s3确认8→22、片段5→13/58、句3→7/35（本轮ARM匹配），近词1→3/20、普通0/20、480秒音乐0。更松近词6/20拒部署。设备模型471dfb5e…ada9ba3/96917162…00c92c，正式路径22确认一致；恢复PID1158/Key1/ready，Web不动，tmp已清，原厂PID稳定，恢复Macprivate/r34。尚无新现场验收，召回仍低，notes/context更新；第三十四轮详细报告由代理补齐。
+
+150. 2026-11-02 为开源发布重组项目文档：重写根README和CONTRIBUTING，保留中文为主的技术正文；将context压缩为当前状态与主题入口，knowledge改为按读者任务导航；整理tools/README并新增wake-model-training参考及v5模型卡/校验和。34份逐轮报告改为ASCII英文文件名，报告正文与证据边界保留，修复引用并将第三十四轮最终安装证据合并进单一报告。补充Agent Notes报告命名规则与ASCII文件名门禁。相对链接检查无失效项、静态notes检查通过、git diff --check通过；本机无PowerShell，官方Agent Notes门禁未能运行。未执行设备操作或固件构建。
+
+151. 2026-11-02 文档整理时将第三十四轮最终安装记录并入同主题报告，并更新当前上下文：平衡档设备侧FST/config已安装，Duplex二进制未变；片段命中13/58、合并句7/35、TTS相近词误接受3/20，纯音乐两段各0确认。没有新真人关键词验收或云会话验收；仓库`models/wake-doubao-v5/`保留基线v5声学权重，不含设备上调整后的容器。证据来自第三十四轮报告，本次仅文档整理，无设备操作。
+
+152. 2026-11-03 复核最新唤醒/会话状态时发现第三十五轮候选：一般对话指令被简化，采集改为单一线程和有界preroll队列，避免建会话期间丢帧。报告记载合成handoff与session policy检查、ARM `-Werror` 构建通过；候选SHA 06908fb5…e17fc，未实机部署或做真人语音验收。同步更新KWS当前行为说明、项目上下文和知识导航；删除被新报告/当前说明取代的历史操作指南与过期路线图，另将部署恢复说明收敛为一份当前规则。本次只做文档核对，不执行设备操作。

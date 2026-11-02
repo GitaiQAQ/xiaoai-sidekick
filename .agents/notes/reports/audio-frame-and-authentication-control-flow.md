@@ -1,0 +1,69 @@
+# Report: Audio Frame and Authentication Control Flow (Round 9)
+
+时间：2026-11-01 12:55–13:20，Asia/Shanghai。
+状态：目标已由用户明确恢复（选择"恢复并连设备"）。本轮只有只读取证、本地反汇编、设备回环测试；未改动原厂服务、未读音频、未使用真实凭据。
+
+## 结论与范围
+
+本报告记录设备信息复核、双平面音频帧分析和认证控制流回环验证。报告中的帧长度与协议路径来自本轮实测/静态证据；回环不等于云端模型调用成功。本轮未读取用户音频或使用真实凭据，也未改动原厂服务。
+
+## 一、设备复核
+
+重新连接 <speaker-ip>（未沿用交接里的旧记录直接下结论）：
+
+- 时间 12:55:34，uptime 11:46，load 4.55。
+- `mipns-xiaomi` 1282、`mico_aivs_lab` 2527，两个进程都在；`TracerPid` 0、状态 S。
+- `mibt_mesh mesh_status`：`mesh_is_support/enable/running` 均 true，`BTMESH_IDLE`。
+- MemTotal 118760 KiB，MemAvailable 45716 KiB；`/data` 可用 8344 KiB。
+- 两个 speech socket 存在：`/tmp/mipns/usock/speech.usock`、`/tmp/mico_aivs_lab/usock/speech.usock`。
+- `/tmp` 有一处遗留：`lx06-session-metadata.trace`（2941 B，10:08 的 strace 元数据）。内容已经归档在 `logs/native-passive-metadata-trace.txt`，确认无载荷后删除；`.core_history` 两个 0 字节标记保留。
+
+## 二、DNN 双队列与 640 字节帧
+
+详细证据见 `temp/analysis/native-dnn-frame-layout.md`，反汇编全文 `native-dnn-frame-disassembly.txt`（`tools/native-dnn-frame.py` 生成）。要点：
+
+- 队列元素是 int16 样本。`Xaudio_CreateElementQueue_s` 按 `capacity<<1` 申请，入队用 `ldrsh`/`strh` 逐样本拷贝。所以 0xa0 是 160 个样本。
+- `AFE_DnnProcessPostAgc` 用 `len>>2` 换算样本数，把输入第二平面（`in+0x140`，160 样本）入队；DNN 块 256 样本满帧时把 `[obj+0xc]` 的 256 样本入另一队列。
+- 两个队列各攒够 160 样本后，各出队 160 样本写到 `out` 和 `out+0x140`，输出长度 0x280 = 640 字节。
+- 8 次调用（每次 160 样本）正好产生 5 个 256 样本块，与第二平面 8×160 的补给速率一致，队列不会长期失衡。
+- `DnnWeProcessPostAgc_pass` 是直通拷贝，真正的推理调用只在 `DnnWeProcessPostAgc`。
+- 唤醒线程对 `buf+len/2` 做全零检测，命中后打日志 `asr data all zeros, switch to backup` 并翻转平面选择；默认保存第二半，切换后保存第一半。
+
+仍未证明：运行时 `len` 是否就是 640；保存路径前的全局门 `[obj+0x40]==1` 的语义；缓存之后是否再做 Opus 编码。16 kHz / 10 ms 属于与 `AudioRecord` 16000 输出配置一致的推断。
+
+### 动态复核
+
+新增 `src/native_afe_frame_test.c`：只 dlopen 原厂 `libxaudio_engine.so`，用导出的队列创建与 `AFE_DnnProcessPostAgc`，自己伪造节点对象与 DNN 对象（帧长 0x100）喂 12 帧合成数据。不打开音频设备，不接触原厂进程。
+
+实测 `logs/native-afe-frame-runtime.txt`：第 0 次返回 -1；第 1 次起输出 640 字节，平面 0 的起点依次 0/160/320/…/1440（连续 DNN 流），平面 1 依次 5000/6000/…/14000（对应第 k 次调用的 160 样本块）；`afe_frame_test=pass frames=10`。与静态推导完全一致。
+
+过程记录：首版把对象 `+0xc` 当作内嵌缓冲，实际是 512 字节缓冲指针，测试进程在 `DnnWeProcessPostAgc_pass` 的 `memcpy` 处 SIGSEGV（目标 0）。修正后通过；崩溃限于测试进程，`PR_SET_DUMPABLE=0` 生效，`/tmp/.core_history` 未新增条目，原厂 PID 未变。测试二进制 SHA256 `f43e658200d08dc2488ed9a715d39983ee2ab9b4d8ebdd0cd5ad1d4beac57cf4`。
+
+## 三、认证升级控制流的回环验证
+
+新增探针能力（`src/native_library_probe.c`）：
+
+- `--ws-test-server <port> <scenario>`：只在 127.0.0.1 监听，读客户端 Upgrade，按 RFC 6455 计算 `Sec-WebSocket-Accept`（复用原厂 libcrypto），按场景应答。
+- `--ws-local <port>`：用同样的认证分支代码连本机回环，走 `101 → Accept 校验 → 掩码 Close 1000 → 等服务端关闭`。
+- 原 `--ws-stdin` 真实端点行为不变，只是把 URL/路径/Host 参数化。
+
+设备实测（`logs/native-ws-loopback-runtime.txt`）：
+
+| 场景 | 服务端动作 | 客户端结果 | 是否符合预期 |
+| --- | --- | --- | --- |
+| good | 101 + 正确 Accept，收到 Close 后回 Close 1000 | `upgrade_valid=1`、`close_code=1000`、result=pass | 是 |
+| badaccept | 101 + 错误 Accept | `upgrade_valid=0`、result=fail | 是 |
+| status400 | HTTP 400 | `http_status=400`、result=fail | 是 |
+| silent | 101 + 正确 Accept，之后不回 Close | `upgrade_valid=1`，3 秒后超时 result=fail | 是 |
+
+服务端在 good 场景确认收到客户端关闭帧（`client_close_valid=1`）。
+
+边界说明：这验证的是升级/校验/关闭的控制流与帧处理，跑在明文回环上；TLS 本身另有既有的证书校验验证。真实云端 101 仍需凭据，本轮没有发起。
+
+构建：ELF 校验通过，导入 GLIBC_2.4/2.7/2.17，显式原厂加载器执行。SHA256 `35e8579dcfdeaf87ec96ddbc771051014a71bc675d6514f7bc9e7a18bf8f762f`。
+
+## 四、测试后状态
+
+- 原厂 PID 1282/2527 未变，Mesh 正常，`/tmp` 无 lx06 残留，测试二进制由脚本 trap 删除。
+- 未修改设备持久状态，未改启动项，未安装任何库或运行时。
+- 观察/测试都不含麦克风采集，未发送音频，未用真实 Key。

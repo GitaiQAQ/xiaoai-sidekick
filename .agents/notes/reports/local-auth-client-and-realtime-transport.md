@@ -1,0 +1,39 @@
+# Report: Local Authentication Client and Realtime Transport (Round 7)
+
+目标仍是机内小爱/豆包共存。本轮没有替换原厂对话、打开录音或安装常驻程序；完成的是下一步接入所需的本机客户端和传输实测。
+
+## 结论与范围
+
+本轮验证了本机认证客户端的输入校验与传输封装；真实服务权限、完整 WebSocket 会话和音频链路在当时仍未完成。报告里的密钥处理步骤是安全边界说明，不包含或要求在仓库中保存凭据。后续认证结果见独立报告，不能用本轮的传输自检代替。
+
+## 已实测
+
+1. `src/native_ark_client.c`在 LX06 上通过输入校验和**原厂 json-c 动态解析**自检，包括正常 completion、错误对象、空 choices、截断 JSON、null content。之前仅校验字符串的自检已扩展，日志 `logs/native-ark-test-runtime.txt`。
+2. `tools/Invoke-ArkSmoke.ps1 -TransportTest`使用公开假密钥，将最小 JSON 作为 SSH 远端进程 stdin 输入。设备只解析，不发送 HTTP。日志 `logs/ark-stdin-transport-test.txt`确认 `ark_stdin_config_valid=1 network_calls=0`。真实密钥无需进入命令参数、shell 脚本、远端配置文件或日志。
+3. 原厂 libcurl 7.55.1 `CONNECT_ONLY=1`与 `curl_easy_send/recv`可用：复用其 HTTPS 连接，发送固定新实时语音路径的 WebSocket 升级请求。没有认证头，收到 HTTP400，TLS verify=0、响应头1217B，峰值RSS1992KiB。`logs/native-ws-transport-runtime.txt`。400只证明该次收到拒绝响应，不能判定具体鉴权错误，更不能算101升级成功。
+4. 测试后临时二进制删除。原厂PID1282/2527未变，stdin测试后Mesh支持/启用/运行均true。未做全功能回归。
+
+## 客户端的具体边界
+
+Ark固定域名/路径，POST固定短提示词，max_tokens32，最多一次请求，5秒连接/20秒总超时，响应最多64KiB。保留证书和主机名校验，禁代理和重定向。仅输出HTTP/curl状态、长度与completion形状；不打印响应正文。程序先关闭自身dumpable，再读取stdin。JSON内的NUL通过字符串长度比对拒绝。鉴权模式要求HTTP200、TLS校验通过且有非空string content；这仍不是工具调用或完整对话验证。
+
+PowerShell执行策略环境下，本地调用方式：
+
+```powershell
+$p='C:\Users\gitai\Desktop\lx06-agent'
+& ([scriptblock]::Create((Get-Content -Raw "$p\tools\Build-NativeGlibc.ps1"))) -ProjectDir $p -Ark
+& ([scriptblock]::Create((Get-Content -Raw "$p\tools\Invoke-ArkSmoke.ps1"))) -ProjectDir $p -TransportTest
+# 私有凭据准备好后，去掉 -TransportTest 才会执行一次认证调用。
+```
+
+`-TransportTest`不读真实凭据。认证模式只从private/credentials.json或-CredentialsFile指定文件取ark字段，实时语音Key不会一同发给文本接口。现有模板仍为空，尚未做认证请求。
+
+所有动态产物仍须使用 `/lib/ld-linux-armhf.so.3`显式运行。传输探针新增clock_gettime和sscanf，导入GLIBC_2.17/2.7；已核对原厂libc版本定义存在，仅对该探针扩展版本白名单，Ark仍只允许GLIBC_2.4。设备没有新增动态库。
+
+## 继续实施
+
+实时语音还需RFC6455握手校验、每帧随机掩码、分片与控制帧处理、受限缓存和超时；现有400探针不能代替这些实现。随后用实际语音Key做不接麦克风的session.create/close，核对官方音色/会话schema，再接原厂最终ASR流。第二唤醒词、打断、播放仲裁、米家工具调用、OTA影响处理和全功能回归仍未完成。
+
+主要证据来自本机原厂库与实机输出。协议辅助依据：[curl CONNECT_ONLY](https://curl.se/libcurl/c/CURLOPT_CONNECT_ONLY.html)、[RFC6455](https://datatracker.ietf.org/doc/html/rfc6455)、[官方全双工API](https://docs.volcengine.com/docs/doubao-voice/end-to-end-real-time-voice-full-duplex-version?lang=zh)。curl现代WS接口不适用于设备7.55.1，不使用CONNECT_ONLY=2或curl_ws_send。
+
+补充：src/native_websocket.h已实现受限帧头解析与客户端掩码编码，RFC6455 Hello固定向量、截断/非法帧和64KiB边界在音箱通过（logs/native-ws-test-runtime.txt）。目前未接入网络循环，仍需握手校验、分片消息状态、UTF8/close码等处理，不作为完整WebSocket符合性证明。

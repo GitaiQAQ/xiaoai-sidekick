@@ -1,0 +1,166 @@
+# Report: Factory Wake-Word Path in Firmware
+
+分析时间：2026-11-01 上午。分析对象为 LX06 / 1.94.13 的原厂 `system0` 镜像及 SSH 运行环境。本文结论来自本机固件二进制静态分析和设备只读检查，不以 Open-XiaoAI 的资源需求或 KWS 实现推断原厂引擎能力。
+
+**结论：** 原厂唤醒模型和判决链路位于音频引擎中；若干看似可改关键词的导出函数实际为空或只记录日志。证据支持继续研究独立调用原厂引擎，但不证明已能替换模型或让原厂服务识别“豆包豆包”。本轮未写设备、模型或配置。
+
+## 分析范围与前序判断修正
+
+前一轮为了快速打开SSH、寻找可用接口，过度沿用了社区项目的架构边界。社区方案在128MB机型上加载失败，只能说明那个实现不能直接用；不能证明本机无法做双唤醒。应以原厂二进制实现、现有模型和实际内存为准。
+本轮进一步修正“看到函数名就像可配置”的判断：几个名字看起来支持改唤醒词的导出函数实际是空实现或仅打日志，不能直接拿来调用。
+
+## 证据来源与设备对应性
+
+- 实读 /proc/1282/maps、fd、/proc/net/unix、配置及模型路径；进程为 mipns-xiaomi。
+- 原厂二进制 ELF32 ARM 动态符号、重定位、ARM 指令反汇编；对PLT按GOT重定位解析被调函数，不只搜索字符串。
+- 对消息库的 protobuf-c 描述符做结构化提取。
+- 设备上 mipns-xiaomi、pns_ubus_helper、libmdspeech.so、libaivs-message-util.so 的 MD5 与本地原厂镜像文件一致。
+- 设备上 libxaudio_engine.so 与本地补丁库 MD5 一致；它与原厂库此前已验证仅录音设备字符串6字节不同，本轮唤醒相关代码未见这处补丁修改。
+- 运行中的拾音/语音进程仍为 PID 1282/2527，未停止或替换服务。
+
+所有新工具均运行在PC；通过既有SSH读取元数据，没有注入代码、覆盖模型、写唤醒配置、改变设备行为或录音。
+
+## 原厂唤醒运行位置
+
+实际启动命令：
+`/usr/bin/mipns-xiaomi -c /usr/share/xiaomi/xaudio_engine.conf -r opus32 -l`
+
+实机该进程映射了 /usr/lib/libxaudio_engine.so，打开 /dev/snd/pcmC0D3c，并有 /tmp/mipns/pnshelper.fifo。
+配置文件中：engine=xaudio_lx06_1.2.4_0；wake版本=kws_s12a_1.1.7_0；另有VAD与DNN模型目录。
+
+但配置中的 /usr/share/xiaomi/wakeup_model.bin 在实机目录中不存在，原厂镜像提取目录也没有此普通文件。不是漏安装模型就无法唤醒：二进制有内置模型的明确代码路径。
+
+可还原的主要链路：
+
+```mermaid
+flowchart LR
+ A[ALSA 麦克风] --> B[mipns-xiaomi]
+ B --> C[libxaudio_engine: AEC/拾音/唤醒]
+ C --> D[原厂唤醒回调]
+ D --> E[libmdspeech 会话/音频接口]
+ E --> F[Unix datagram + Protobuf]
+ F --> G[mico_aivs_lab]
+ G --> H[小米云语音与原厂技能]
+```
+
+这是多个静态调用点与运行端点结合的链路。每个回调参数的完整ABI、全部音频类型编码、实际触发时序仍未验证。
+
+## 模型在原厂音频库中的位置
+
+ELF符号与数据：
+
+| 符号 | ELF虚拟地址 | 大小 |
+|---|---:|---:|
+| mdata_wakeup_mobile | 0x000c47e8 | 639597 bytes |
+| mdata_wakeup_mobile_clone | 0x00160a58 | 1678701 bytes |
+
+这些地址是ELF中的虚拟地址，不是设备进程运行地址；实际运行需考虑库映射基址和装载偏移。
+
+关键指令关系：
+- PaddyEngineImpl::Init（0x553ec）创建两个状态对象，将类型设置为1/2，并把各自 +0x68 的模型缓冲指针置零，分别调用 RiceEngineInit。
+- RiceEngineInit（0x55600）调用 RiceLoadModelBin。
+- RiceLoadModelBin（0x589c0）的默认分支0x5a0ec检查上述指针；为空时按状态类型，从GOT指向的 mdata_wakeup_mobile 或 mdata_wakeup_mobile_clone 分配并复制模型。
+- GOT 0x4250dc 对应 mobile，0x424d74 对应 clone；已用 .rel.dyn 验证名称对应。
+
+这说明至少默认初始化路径使用内置模型。不能据“model_path”字段就认为把某个bin文件替换掉即可改词。
+
+两份模型的开头都包含 `--keyword-seq` 和数值串 `3,4`。RiceLoadModelBin 中0x59b9c附近确实读取该键，之后用 strchr/strtol 解析逗号分隔数值。它是模型内部的数值序列，不是“豆包豆包”这样的中文字符串配置。
+
+目前没有还原这些编号与声学输出标签的映射，也没有证明原模型覆盖任意中文字音。直接把“3,4”改成其他数字，不能被当作新增豆包唤醒词的方案。
+
+两个模型/两类状态也不能直接等同于两个不同唤醒词：实现还有Rice一级/二级检测的痕迹；它们更像同一唤醒体系的分级模型。完整语义需要继续确认。
+
+## 导出接口的实际行为
+
+| 函数 | ELF地址 | 原厂指令观察 | 结论 |
+|---|---:|---|---|
+| set_wakeup_prefix_suffix | 0x217a8 | 准备日志字符串后尾调用 syslog@plt | 这版不能凭它配置唤醒前后缀 |
+| PaddyEngineImpl::LoadModel | 0x5477c | mov r0,#0；bx lr | 该导出方法没有加载模型的实际实现 |
+| register_callback | 0x1ca84 | 写日志后返回0，没有存回调 | 不能把它当有效回调注册入口 |
+| xaudio_register_callback | 0x20684 | 读取上下文[r0+0x10]，存r1/r2到+0x64/+0x68 | 存在真实回调指针设置，但语义/ABI待验证 |
+| init_system | 0x21264 | 接收多个回调/用户上下文，调用register_data_upload_callback与create_xaudio | 更值得追踪的初始化边界 |
+
+以上是反汇编观察，未通过直接调用来改变进程状态。真实回调存在并不意味着可以把猜测的函数原型直接拿来注入；ARM硬浮点/VFP参数和线程上下文需一并确认。
+
+在 mipns-xiaomi 内已找到实际调用点：
+- 0x28a64：转到 init_system@plt；
+- 0x26d80：调用 mdspeech_create@plt；
+- 0x26e34：调用 mdspeech_register_alsa_raw_read_callback@plt；
+- 0x2677c：调用 mdspeech_wakeup_info_send@plt；
+- 0x26010：调用 mdspeech_data_read@plt。
+
+这里比“看到一些字符串”多了一层实际代码调用证据，仍不声称已完成动态断点验证。
+
+另一个相关事实：mdspeech_register_alsa_raw_read_callback 的定义在原厂 libasound.so.2.0.0 里，而 mdspeech_data_read/create/wakeup_info_send 的实现在 libmdspeech.so。原厂ALSA库包含厂商扩展，不能假设它与标准桌面ALSA完全等价。
+
+## 原厂内部消息结构
+
+从 libaivs-message-util.so 的 protobuf-c 描述符读取 magic、字段表、编号、类型和C结构偏移，已提取12个消息描述。没有借用社区项目的WebSocket协议。
+
+运行中存在：
+- /tmp/mipns/usock/speech.usock
+- /tmp/mico_aivs_lab/usock/speech.usock
+
+/proc/net/unix 中类型均0002，对应Unix datagram。它不是HTTP接口，也不是本轮就能直接与豆包云兼容的WebSocket。
+
+主要上行消息：
+
+| 字段号 | 名称 | 类型 |
+|---:|---|---|
+| 1 | type | uint32 |
+| 2 | register_request | message |
+| 3 | stream_prepare_request | message |
+| 4 | stream_transmitting | message |
+| 5 | voip | message |
+| 6 | wakeup_latency | message |
+
+子消息 stream_transmitting 含 type:uint32 与 stream:bytes；准备请求含 activate_mode、interact_mode。
+下行包含 type、dialog_id、stream_prepare_response、expect_speech、asr_partial、dialog_finish。
+
+这说明原厂已把“建立会话/音频流/识别片段/会话结束”做成本地消息边界，是后续适配值得研究的地方。不过Protobuf只是一层：type数字语义、额外帧头、注册握手、音频编码和时序未全部还原，本轮没有在这些端点上发送伪造消息。
+
+描述符里的C结构偏移用于分析ABI，不是网络线上字段偏移；实际Protobuf字节需按字段号编码，不能把C结构直接写进socket。
+
+## `/bin/wakeup.sh` 与 `pnshelper` 的作用
+
+原厂 /bin/wakeup.sh 主要是提示音、灯效、联网/超时等反馈行为，不能因为名字叫wakeup就把它当关键词识别器。
+pnshelper 提供 ubus -> pnshelper.fifo 的事件入口；它用于控制/通知原拾音状态，不等于已存在一个能够识别“豆包豆包”的第二声学模型。
+
+本轮保留原生脚本中对麦克风静音、通话、音乐音量与唤醒状态的处理。上一轮社区示例中的mic_on/mic_off封装与原厂脚本事件命名存在值得核对的差异，不能直接照抄数字事件。
+
+## 对双助手方案的影响
+
+“让原厂小爱与豆包共存”仍有机会，但应把两个问题分开：
+
+A. 唤醒后把会话交给谁？
+原厂回调与本地会话/音频边界已找到。可优先研究在这个边界做机内路由，让原厂小爱链保留，另一路交给豆包。无需先复制社区的另一整套唤醒服务。
+
+B. 用两个不同的词唤醒？
+原厂的唤醒词与内置模型/解码数值序列有关，尚未发现可直接设置任意中文关键词的有效接口。可以继续研究已有模型的标签和解码器是否可扩展，也可以评估一个更小的独立单词检测器。不能因为社区KWS不适配128MB，就排除所有实现；也不能因为库里有keyword-seq，就断言原模型能识别豆包。
+
+优先工程方向：
+1. 从init_system实参、create_xaudio与回调执行点恢复原厂唤醒/处理后音频的真实ABI。
+2. 从libmdspeech恢复会话握手和类型值，确认唤醒事件到小米云发起前的截断点；目标是路由，不是事后杀进程。
+3. 第一轮旁路验证只记录唤醒元数据/音频长度，不上传环境音、不抢原会话；证明原链无回归。
+4. 再研究第二关键词能力，并测独立实现的资源成本。若新模型实测超预算，再决定是否需把模型压缩并入未来系统镜像；不能拿/data不足直接断言整机无法部署。
+5. 增加豆包会话和受限原厂工具调用，做静音、停止、闹钟、音乐、米家等完整仲裁。
+
+当前没有执行hook/注入或替换服务；还不能承诺双关键词已可用。与前轮相比，本轮已经把研究入口从社区客户端转到原厂音频库、回调边界和内部会话协议。
+
+## 本地资料与复现工具
+
+- logs/native-wakeup-runtime.txt：加载库、文件描述符、模型路径、Unix端点。
+- logs/native-wakeup-hashes.txt：实机文件摘要与服务存活。
+- temp/analysis/live-local-matches.csv：实机/原厂镜像匹配。
+- temp/analysis/*-symbols.json：ELF符号。
+- temp/analysis/*-annotated.txt：ARM反汇编与PLT/部分常量注释。
+- temp/analysis/native-model-evidence.json：模型数据、内部键、GOT重定位。
+- temp/analysis/native-speech-protobuf-descriptors.json：原厂消息字段。
+- tools/analyze-native-wakeup.py：符号/定向反汇编。
+- tools/annotate-native-arm.py：PLT重定位解析与定向指令注释。
+- tools/native-model-evidence.py：模型与符号归属提取。
+- tools/native-protobuf-descriptors.py：protobuf-c描述符解析。
+
+反汇编辅助注释是启发式结果，尤其跨分支的寄存器常量传播不能当作完整数据流证明；重要结论以原始指令、ELF重定位与描述符字段交叉验证。线性反汇编也可能把文字池解释成指令；没有把这些区域当成实际执行路径。
+
+辅助工具：PC本地Python3.12.8嵌入版、Capstone5.0.3、pyelftools0.31。包来自Python官方/PyPI，两个wheel与发布元数据SHA256核对一致，未安装到音箱。没有使用外部Agent或子代理。

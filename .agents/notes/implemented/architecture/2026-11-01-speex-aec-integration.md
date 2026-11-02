@@ -32,11 +32,11 @@ Status: implemented
 
 线上唤醒：音乐下阈值 15 时，两次真人“豆包豆包”分别以 12.5082 和 14.6845 在候选暂停后确认，`stage=wake_detected`，会话正常建立；同一实例出现 2 次未确认的候选暂停。资源：单核约 21%，RSS 约 2.3 MB。
 
-成因、证据及参数重新评估条件见[音乐下唤醒失效修正](../bug-fix/2026-11-01-music-wake-stopped-firing.md)；诊断覆盖范围见[同音频采集 A/B](../testing/2026-11-01-capture-ab-comparison.md)，现场数据见[第二十二轮报告](../../reports/采集路径回声消除接入-第二十二轮.md)。
+成因、证据及参数重新评估条件见[音乐下唤醒失效修正](../bug-fix/2026-11-01-music-wake-stopped-firing.md)；诊断覆盖范围见[同音频采集 A/B](../testing/2026-11-01-capture-ab-comparison.md)，现场数据见[第二十二轮报告](../../reports/capture-path-echo-cancellation-integration.md)。
 
 ## Consequences
 
-- 后续现场证据确认音乐自激活仍然存在，候选暂停后的第三窗不保证独立确认；详见[第二十三轮复核](../../reports/音乐自激活与原厂判醒复核-第二十三轮.md)。AEC 生效与词级判醒准确是两个不同验收条件。
+- 后续现场证据确认音乐自激活仍然存在，候选暂停后的第三窗不保证独立确认；详见[第二十三轮复核](../../reports/music-trigger-and-factory-wake-review.md)。AEC 生效与词级判醒准确是两个不同验收条件。
 
 - 唤醒与上行拿到同一份去回声信号；音乐下的唤醒词召回从“必须关掉音乐”变为可用，代价是音乐可能被短暂暂停 2.2 秒。
 - 采样率显式设为 16 kHz 是主要修复：同一段语音在 AEC 后的距离从 13.3 降到 9.6；不做这一步，多麦克风混音也救不回来。

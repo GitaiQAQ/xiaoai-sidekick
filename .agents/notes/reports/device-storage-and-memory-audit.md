@@ -1,0 +1,24 @@
+# Report: 机内空间和内存审计（2026-11-01）
+> 历史验证记录：本文保留对应阶段的实验条件、数据和限制；其中设备进程、部署位置与恢复目录只描述当时状态，不是当前部署说明。当前操作边界见项目的有效 Reference 文档。
+
+用户确认机内优先，并询问能否清理存储/内存。只读审计，不删文件、不停服务、不改日志配置、不启用swap/zram。
+
+## 设备资源测量
+
+- 根目录是/dev/mtdblock4 squashfs，只读；df显示100%是镜像挂载结果，不等于/data满。不能通过删解包文件释放可写空间，不为清空间重刷固件。
+- /data ubifs容量13644KiB，df已用4524KiB、可用8388KiB；du逻辑文件总5800KiB与压缩/元数据口径不同，不能按du直接承诺释放量。
+- MemTotal118760KiB，MemAvailable约44792KiB；MemFree约7936KiB不是实际全部可用量。缓存含可回收页，无需强制drop_caches。
+- /tmp是tmpfs，使用888KiB，清掉它最多回收少量RAM，不增加闪存。当前无值得大清的临时堆积。
+- /data/log约1924KiB，15份messages.0.gz到messages.14.gz，单份约70-181KiB；仅列名字/大小未读取日志正文。可候选归档后缩减历史保留数量，但循环重生，需先确认syslog-ng轮转配置与恢复方式；不直接清活动日志。
+- /data/miio_mpkg/bin/mibt_mesh_rtl逻辑2068949B，为Mesh程序，不是安装缓存，不删；/data/sound-vendor/ShenSheng约864KiB为音色资源，不在保留功能目标下随意删。
+- 自有/data/lx06-agent约112KiB，程序83472B，client.log13294B，不是空间瓶颈；旧轮测试日志已在主机保存。
+- RSS大项：mipns15304KiB、mediaplayer7564、mico6060、messagingagent5924、idm4652、bluealsa3968等。RSS可能共享页，不简单相加，也不因名字猜服务可关。
+- 内核暴露zram0，disksize/initstate均0，支持lzo/deflate；/proc/swaps为空。仅证明可评估，未证明开压缩交换收益或时延可接受。
+
+## 清理和优化结论
+
+继续机内原生播放器+轻量provider。先验证流播放、限定队列/缓存、避免整曲落盘和大依赖。原客户端播放ring.cap=RATE_OUT*2*60（2.88MB逻辑分配）有优化空间，但缩减前要实现背压和验证不丢音，不能仅改小常量。
+
+清理优先级：已结束的自有测试残留→过期日志归档/保留数量→自有程序缓冲和日志上限。当前资源并未告急，不做无收益的批量删除。原厂音频、Mesh、蓝牙、米家、闹钟、认证、恢复镜像全部保留。zram仅在实际内存压力与测得收益后再临时验证，不使用闪存swap来回避设计问题。
+
+原始证据：logs/storage-memory-audit.txt、storage-cleanup-candidates.txt、memory-optimization-options.txt。原厂PID1282/2527未变。

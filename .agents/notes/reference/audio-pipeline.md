@@ -93,11 +93,11 @@
 
 ```powershell
 # 8 通道电平
-ssh root@192.168.100.210 "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --afe-channels 2"
+ssh root@<speaker-ip> "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --afe-channels 2"
 
 # AEC 抑制比（先让音乐播放，再执行）
-ssh root@192.168.100.210 "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --aec-test 4"
+ssh root@<speaker-ip> "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --aec-test 4"
 
 # 采集路径 A/B：同一段语音并行打分，不保存音频
-ssh root@192.168.100.210 "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --mic-compare 20"
+ssh root@<speaker-ip> "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --mic-compare 20"
 ```

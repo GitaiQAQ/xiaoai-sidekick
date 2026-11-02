@@ -20,11 +20,11 @@ The date is when the topic was first proposed. Cross-references use relative mar
 Two more areas are path-encoded and machine-checked, for material that is not a decision:
 
 - `reference/<topic>.md` — manuals, protocols, policies, deployment scopes, the living state file, and the reading guide. Header: `# Reference: <title>`; filenames are lowercase kebab-case. A reference is current documentation and may change every round; it is not a frozen decision.
-- `reports/<topic>.md` — per-round evidence and verification records. Header: `# Report: <title>`; filenames keep their descriptive topic name.
+- `reports/<topic>.md` — evidence and verification records. Header: `# Report: <title>`; filenames use ASCII lowercase kebab-case. Organize reports by technical topic; keep round and date details in the title/body instead of relying on round order as the only navigation.
 
 Reference material and reports get no lifecycle or class and are never moved into the Agent Note tree. The knowledge guide (`reference/knowledge.md`) is a curated entry point, not a generated index.
 
-Raw material and generator scripts live outside this directory: `rom/` (public ROM and upstream sources), `private/` (device-specific and personal data), `temp/` (regenerable derived artifacts) and `tools/` (scripts, with secrets under `tools/local/`).
+Raw material and generator scripts live outside this directory: `rom/` (public ROM sources and checksums), `private/` (device-specific and personal data), `temp/` (regenerable derived artifacts) and `tools/` (scripts, with secrets under `tools/local/`). Directory and file names in this repository must use ASCII characters; document prose may use Chinese.
 
 ## Classification
 

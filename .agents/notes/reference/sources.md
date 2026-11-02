@@ -1,8 +1,8 @@
 # Reference: 研究来源
 
-第二十四轮以本机 ELF 指令、运行配置固定字段和隔离进程实验为证据，未新增外部资料。见[原厂两级判醒与独立引擎调用](../reports/原厂两级判醒与独立引擎调用-第二十四轮.md)：确认原厂模型初始化/推理可独立调用，实际观察到一级候选后二级超时拒绝；不等于已有“豆包豆包”模型或已修复误激活。
+第二十四轮以本机 ELF 指令、运行配置固定字段和隔离进程实验为证据，未新增外部资料。见[原厂两级判醒与独立引擎调用](../reports/factory-two-stage-wake-engine.md)：确认原厂模型初始化/推理可独立调用，实际观察到一级候选后二级超时拒绝；不等于已有“豆包豆包”模型或已修复误激活。
 
-第二十三轮：原厂算法证据以本机 libxaudio_engine.so 的 Rice/Paddy、MFCC/CMVN、Viterbi/IsKeyword 与两级缓存调用反汇编为准，见[报告](../reports/音乐自激活与原厂判醒复核-第二十三轮.md)。备选方案查阅 [Speex 官方源码](https://github.com/xiph/speexdsp/blob/master/libspeexdsp/mdf.c)、[Sherpa 官方 KWS 文档](https://k2-fsa.github.io/sherpa/onnx/kws/index.html)、[ARM 构建脚本](https://github.com/k2-fsa/sherpa-onnx/blob/v1.12.15/.github/workflows/arm-linux-gnueabihf.yaml)及 [Open-XiaoAI KWS](https://github.com/idootop/open-xiaoai/blob/main/examples/kws/README.md)。这些公开项目不是本机原厂 KWS 的源码；本轮 PC 实验未通过真人录音召回与 ARM ABI 兼容性检查，未部署。
+第二十三轮：原厂算法证据以本机 libxaudio_engine.so 的 Rice/Paddy、MFCC/CMVN、Viterbi/IsKeyword 与两级缓存调用反汇编为准，见[报告](../reports/music-trigger-and-factory-wake-review.md)。备选方案查阅 [Speex 官方源码](https://github.com/xiph/speexdsp/blob/master/libspeexdsp/mdf.c)、[Sherpa 官方 KWS 文档](https://k2-fsa.github.io/sherpa/onnx/kws/index.html)、[ARM 构建脚本](https://github.com/k2-fsa/sherpa-onnx/blob/v1.12.15/.github/workflows/arm-linux-gnueabihf.yaml)及 [Open-XiaoAI KWS](https://github.com/idootop/open-xiaoai/blob/main/examples/kws/README.md)。这些公开项目不是本机原厂 KWS 的源码；本轮 PC 实验未通过真人录音召回与 ARM ABI 兼容性检查，未部署。
 
 - https://github.com/idootop/open-xiaoai
 - https://github.com/idootop/open-xiaoai/blob/main/docs/flash.md
@@ -17,7 +17,7 @@
 
 以上目前是来源索引，不代表源代码或网页已完整下载入项目。
 
-- 本轮主要证据为本机原厂ELF、运行元数据和src中的隔离实验；见reports/编码边界与机内程序-第四轮.md。
+- 本轮主要证据为本机原厂ELF、运行元数据和src中的隔离实验；见reports/native-program-boundaries.md。
 - https://ziglang.org/download/ 与 https://ziglang.org/download/index.json ：PC交叉编译工具官方来源；0.13.0 Windows包已按该JSON的SHA256核对。元数据副本temp/analysis/zig-download-index.json。
 
 第五轮直接证据/格式辅助来源（2026-11-01）：
@@ -44,7 +44,7 @@
 - https://docs.volcengine.com/docs/doubao-voice/end-to-end-real-time-voice-full-duplex-version?lang=zh ：本轮web抓取到正文（页面更新2026-10-27），确认JSON事件协议、X-Api-Key、model 1.2.6.1、16k/24k音频约束、mute/commit/cancel/close语义与全部事件名。
 - https://docs.volcengine.com/docs/6561/1257544?lang=zh ：官方音色列表，S2S主打音色ID（Vivi/小何/云舟/小天 2.0）。
 - RFC6455与libcrypto Accept计算沿用第八轮来源，仅用于本机回环演练，未连真实云端。
-聚合音乐本轮来源（2026-11-01）：Music Assistant installation/music-providers/netease-cloud-music/qqmusic/player-support/dlna，https://www.navidrome.org/docs/overview/ ，https://github.com/hanxi/xiaomusic ，https://github.com/maotoumao/MusicFree 。完整链接、公开资料与机内证据区分见reports/聚合音乐环境-方案评估.md。
+聚合音乐本轮来源（2026-11-01）：Music Assistant installation/music-providers/netease-cloud-music/qqmusic/player-support/dlna，https://www.navidrome.org/docs/overview/ ，https://github.com/hanxi/xiaomusic ，https://github.com/maotoumao/MusicFree 。完整链接、公开资料与机内证据区分见reports/aggregated-music-environment-assessment.md。
 
 网易云协议参考（2026-11-01，本轮读源码未调用服务）：https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced/tree/main/module 下login_qr_key.js、login_qr_check.js、song_url_v1.js、vip_info.js。当前URL接口xeapi，不照搬旧weapi假设；详细路径见docs/NETEASE_ACCOUNT_PLAN.md。
 

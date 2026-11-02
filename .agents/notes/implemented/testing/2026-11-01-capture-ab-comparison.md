@@ -19,7 +19,7 @@ Status: implemented
 - 只是放音乐、没人说话：看每条路径的 `best`，这是误唤醒的安全余量。
 - 另跑一次，请用户真人说唤醒词：比较同次采集内各路径的 `best` 与 `wakes`，这是召回余量；不要与无人说话的测量混成一次。音乐、音量和站位须记录。最低距离过线不代表连续窗口确认或线上唤醒已成功。
 
-这个工具为[音乐下唤醒失效](../bug-fix/2026-11-01-music-wake-stopped-firing.md)提供路径比较证据；符号问题还需结合动态符号与采样率日志定位，候选暂停问题还需读状态机并做线上验证。数据见[第二十二轮报告](../../reports/采集路径回声消除接入-第二十二轮.md)，正式采集边界见[采集架构笔记](../architecture/2026-11-01-speex-aec-integration.md)。
+这个工具为[音乐下唤醒失效](../bug-fix/2026-11-01-music-wake-stopped-firing.md)提供路径比较证据；符号问题还需结合动态符号与采样率日志定位，候选暂停问题还需读状态机并做线上验证。数据见[第二十二轮报告](../../reports/capture-path-echo-cancellation-integration.md)，正式采集边界见[采集架构笔记](../architecture/2026-11-01-speex-aec-integration.md)。
 
 ## Consequences
 

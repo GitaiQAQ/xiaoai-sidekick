@@ -110,6 +110,7 @@ $reportsChecked = 0
 $reportRoot = Join-Path $notes 'reports'
 if (Test-Path -LiteralPath $reportRoot) {
     Get-ChildItem -LiteralPath $reportRoot -File -Filter '*.md' -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($_.BaseName -notmatch '^[a-z0-9]+(-[a-z0-9]+)*$') { Add-Violation $_.FullName 'report filename must be lowercase ASCII kebab-case' }
         $script:reportsChecked++
         $lines = [IO.File]::ReadAllLines($_.FullName)
         $first = ($lines | Where-Object { $_.Trim() -ne '' } | Select-Object -First 1)

@@ -1,0 +1,74 @@
+# Report: 语音交互调优与回声消除逆向：第二十一轮
+> 历史验证记录：本文保留对应阶段的实验条件、数据和限制；其中设备进程、部署位置与恢复目录只描述当时状态，不是当前部署说明。当前操作边界见项目的有效 Reference 文档。
+
+本轮从“唤醒与回答体验”出发，做了四组改动：会话结束工具、唤醒应答音色、回答音量、音乐下的唤醒策略与打断；并逆向确认了原厂 AEC 的实现，用设备自带 Speex 做了原型验证。
+
+## 会话结束工具
+
+- `src/native_tools.h` 新增 `session_end`（voice 范围），执行动作同名。
+- 模型在用户说“不用了/先这样/再见”时调用；`tb_worker` 识别结果里的 `action=session_end`，置 `tb_job.end_session`。
+- 循环在工具结果送达后设置 `end_requested`：后续回答照常播报，播完立即回待机，不再开 8 秒追问窗口；若 5 秒内没有开始回答，也直接结束。
+- 实测（设备本地）：`--tool-test` 返回 `{"ok":1,"action":"session_end"}`、`tool_end_session=1`；普通工具保持 0。真人语音调用尚未复测。
+
+## 唤醒应答音频
+
+- 设备原提示音 `/usr/share/sound/wakeup_wozai.wav` 是小米录音：470 ms，峰值 32768（0 dBFS）。
+- 用豆包实时模型生成“我在。”：新增 `--make-ack <path>`，连接实时会话，回放唤醒录音（`/tmp/doubao_enroll.wav` 前 2.5 秒）加 0.8 秒静音触发回答，抓取 `response.output_audio.delta` 写成 16 kHz WAV。
+  - 试过文本 `conversation.item.create`：该服务对文本不触发回答；`response.create` 返回 `unknown event name`。音频注入可行。
+- 首次生成峰值只有 10476（约 −10 dBFS），明显比原厂小；已在生成时归一化到峰值 30000（约 −0.8 dBFS），重生成后 1003 ms、峰值 30000。
+- `feedback_ack` 优先读 `/data/lx06-agent/wake_ack.wav`，缺失回退原厂文件。
+- 新增 `--wav-peak <wav>` 用于对比任意 16 kHz WAV 的时长与峰值。
+
+## 回答音量
+
+- 回答 PCM 实测峰值约 12293（约 −8.5 dBFS），原厂提示音 32768，差约 8 dB。
+- `play_delta` 解码后统一乘 `g_answer_gain`（默认 250%，环境变量 `LX_ANSWER_GAIN` 100–400），带削顶保护；不改系统音量，音乐响度不受影响。
+- 真人听感尚未复测（需要一次现场对话）。
+
+## 音乐环境下的唤醒和打断
+
+- 音乐播放时，唤醒词在 11.9–12.3 的距离范围内勉强命中；音乐本身也会凑出 2–3 个连续命中，造成误唤醒。
+- 调整：
+  - 音乐播放时把连续命中要求从 3 提到 4（`kws->min_hits` 运行时切换，KWS 结构新增该字段，`LX_KWS_MIN_HITS` 仍是默认值）。
+  - 第 3 个命中时暂停原厂播放器 2.2 秒（`music_paused_for_candidate`），用干净音频确认第 4 个；未确认则恢复（`music_resumed_no_wake`）。
+  - 会话开始 10 秒内没有任何回答开始则关闭（`session_stop=no_response`），避免空转；本地语音门限 900 → 2500。
+- 唤醒词打断（播放回答期间）：回答开始时初始化 KWS，播放中持续送帧检测；命中“豆包豆包”则清空播放缓冲、置 `g_suppress_audio` 丢弃本轮剩余音频、发 `input_audio_unmute.commit`、回到聆听（`barge_in=1`）。**尚未真人验证。**
+- 现场仍报告“经常误触 + 没响应”，说明本地模板在音乐/噪声下区分度不足；这正是下一步接入 AEC 的动机。
+
+## 原厂 AEC 证据与主机原型
+
+详见 `.agents/notes/reference/audio-pipeline.md`。要点：
+
+- `hw:0,3` 8 通道 = 6 路麦克风（ch0–5）+ 2 路播放参考（ch6–7，静音时为 0），同一路采样流天然对齐。
+- 原厂 AEC 在 `mipns-xiaomi` 加载的 `libxaudio_engine.so` 里，导出 `CreatAECHandler`/`SetAECMember`/`AECProcess`；反汇编显示是 **Speex**：`speex_echo_state_init(128, 4096)` + `speex_preprocess_state_init(128, 16000)`。
+- 设备自带 `libspeexdsp.so.1.5.0`；新增 `--afe-channels` 与 `--aec-test` 两个只读诊断模式。
+- 原型实测：播放音乐时 mic RMS 5309 → AEC 输出 585（约 19 dB 抑制）；静音时 4843 → 893。
+- 已知差异：`speex_echo_ctl` 用 `dlsym` 取不到（其余符号正常），原型沿用 8 kHz 默认配置；降采样为 3 点平均，未做正式抗混叠。
+- 原型未接入正式语音路径。
+
+## 部署状态
+
+- 部署与回滚记录见 `logs/operations.md` 第 105 条；回滚基线是 `/data/lx06-agent/revision20-original/`。
+- Web 进程 PID 3662；语音进程已停止（`lx06.pid` 残留旧 PID，`agent_pid()` 会校验 `/proc/<pid>/cmdline`，不影响判断）。
+- 原厂 1282/2527 与 Mesh 正常。
+
+## 功能验证状态
+
+| 项目 | 状态 |
+|---|---|
+| `session_end` 工具分发 | 已验证（本地 `--tool-test`） |
+| `session_end` 真人语音 | 未验证 |
+| 唤醒应答音色与响度 | 文件生成与峰值已验证；听感未复测 |
+| 回答音量增益 | 已部署；听感未复测 |
+| 音乐下 4 连击 + 候选暂停 | 已部署；现场仍报误触/漏触 |
+| 唤醒词打断 | 已部署；未真人验证 |
+| AEC 原型抑制比 | 已验证（19 dB / 14.7 dB） |
+| AEC 接入正式路径 | 未开始 |
+
+## 后续工作
+
+1. 把 AEC 接进正式采集（8 通道 → AEC → 16 kHz），唤醒与上行共用。
+2. 解决 `speex_echo_ctl`（`dlvsym` 或调用引擎封装），显式设 16 kHz。
+3. 降采样换成正式低通；考虑简单波束成形。
+4. AEC 落地后重新评估是否保留半双工静音与最小命中数。
+5. 补一次真人回归：唤醒、打断、`session_end`、回答音量。
