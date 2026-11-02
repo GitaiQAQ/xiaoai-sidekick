@@ -54,4 +54,4 @@ Before submitting code, run the checks relevant to the changed area and report t
 - Do not include generated build output, personal data, credentials, or unlicensed third-party assets.
 - Declare new dependencies with their version, source, and license.
 
-The project currently has no `LICENSE` file. Contributions do not imply that maintainers have granted redistribution rights for the repository or third-party materials.
+Project-authored code and documentation are licensed under the [MIT License](LICENSE). Before adding third-party code, model assets, firmware-derived files, or datasets, document their source and redistribution terms. The project license does not replace those separate terms.

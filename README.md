@@ -100,4 +100,4 @@ Never publish personal recordings, recognition transcripts containing personal d
 
 ## License
 
-There is no `LICENSE` file in this repository. Until the maintainers add one, the repository does not grant permission to redistribute or use its contents under an open-source license. Third-party firmware and dependencies retain their own terms.
+Project-authored code and documentation are licensed under the [MIT License](LICENSE). Third-party firmware, libraries, datasets, and other separately identified materials retain their own terms; the MIT License does not grant rights to those materials. Check the relevant notices and source records before redistributing them.
