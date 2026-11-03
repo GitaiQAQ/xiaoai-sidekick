@@ -31,7 +31,7 @@ s3为已有240秒音乐下真人录音。人工labels.csv定义58个pos片段；
 
 loop1的最易罚分档（一级1/二级2）在s2b180秒及s2300秒纯音乐均0候选/确认；分别11165/18570ms，RSS9568/9600KiB。神经权重没有改。
 
-另取已有TTS corpus，固定seed34选10正例、20相近词、20普通句，以各1秒零音分隔生成132.42秒本机fixture，输入不落设备。以同一事件区间口径匹配：
+另取已有TTS corpus，固定seed34选10正例、20相近词、20普通句，以各1秒零音分隔生成内容132.42秒、另补1秒尾静音的本机fixture（实际输入133.42秒），输入不落设备。以同一事件区间口径匹配：
 
 | 配置 | 正例命中/10 | 相近词误接受/20 | 普通句误接受/20 |
 | --- | ---: | ---: | ---: |
@@ -66,4 +66,34 @@ loop1的最易罚分档（一级1/二级2）在s2b180秒及s2300秒纯音乐均0
 
 带凭据恢复启动后，语音进程报告 `key_loaded=1`、两级 `factory_kws_ready` 和 `stage=standby`，待机预算为 3,600 秒。Web 未改；当次只读观察到原厂、米家、Mesh 和播放器进程仍在。本轮采集 10 秒，采样数约 159,040–160,640，记录的安静峰值为 23–40（原记录未标单位）。本轮没有完成新的真人关键词现场验收，也没有测试云端会话，因此不能称用户已确认可用或保证完整原厂功能。进程号仅是当次观察值，不代表当前进程状态。
 
-本轮只改变 Sidekick 自有模型的配置/FST；Duplex 二进制 SHA-256 `a4553ad732769d6ecd8510caffc8d7ebb3be7d8e2be4830ffaf1872e10720f6e` 未变，原厂库与原厂模型未改。临时目录 `/tmp/wake-tune-r34` 已清理，`MemAvailable` 为 23,944 KiB、`/data` 可用 5,532 KiB、`/tmp` 可用 9,888 KiB。与原版相比，人工标注片段命中由 5/58 增至 13/58，合并句由 3/35 增至 7/35；TTS 小样本相近词误接受由 1/20 增至 3/20。绝对召回仍低，且小样本显示误接受上升。现场关键词效果和完整功能仍待用户验证。
+本轮只改变 Sidekick 自有模型的配置/FST；Duplex 二进制 SHA-256 `a4553ad732769d6ecd8510caffc8d7ebb3be7d8e2be4830ffaf1872e10720f6e` 未变，原厂库与原厂模型未改。临时目录 `/tmp/wake-tune-r34` 已清理，`MemAvailable` 为 23,944 KiB、`/data` 可用 5,532 KiB、`/tmp` 已用 9,888 KiB（可用 49,492 KiB）。与原版相比，人工标注片段命中由 5/58 增至 13/58，合并句由 3/35 增至 7/35；TTS 小样本相近词误接受由 1/20 增至 3/20。绝对召回仍低，且小样本显示误接受上升。现场关键词效果和完整功能仍待用户验证。
+
+
+## ARM 与此前 macOS 口径的区别
+
+此前 macOS v5 的 27/58、17/35 是**一级 numpy 参考前向**：MFCC→网络→FST，取关键词路径与背景路径成本差 margin<0 的帧，将间隔不超过100帧的命中合成事件；它没有这次原厂Paddy的二级确认、循环计数门槛、两级缓存和等待超时条件。本轮ARM的8确认→5/58、3/35是**v5一级加l2-d160二级的原厂连续推理**，只有外层flag1算确认，flag2超时不算。因此二者不是同一准确率指标；不能把27→5全部归因于ARM平台或前端差异。原厂前端是否与numpy完全一致仍未实测对齐，属于另一个未验证项。
+
+ARM离线探针每次送160个S16样本（10ms），t0对应录音原始首样本；没有额外前滚、ACK、100帧零音冲刷或设备实时等待。日志frame是事件返回时刻，a1/a2是解码器返回的边界；匹配用t=(a1+a2)/200秒，**不用事件返回frame/100**，以免把二级确认/60帧超时延迟当成发言时刻。该映射按10ms帧计数推定，不是逐条强制对齐后的字级边界，容差沿用start−0.3/end+0.5秒。没有在生产现场帧计数与旧录音之间做匹配。
+
+58个正例区间来自人工labels.csv的session/start_s精确键，未标不回退ASR。35组合由这些区间按相邻间隔严格小于0.5秒合并；边界正好0.5秒另成一组。每个区间/组只要有一个确认中点落入容差就记一次命中；多个确认可落在同一组，所以22确认不等于22个独立句子，也不等于22/58。
+
+可重算方法：从对应probe日志提取flag1的a1/a2，按上述中点与区间容差匹配，分别统计命中区间数、命中合并组数、没有落入任何人工正例容差的确认数。基线日志temp/analysis/wake-probe/v5-l2-s3-stream.log；最终temp/analysis/wake-tune-r34/balanced-s3.log。TTS固定列表在temp/analysis/wake-tune-r34/tts50.json，与其同目录日志匹配，不使用用户转写内容推断标签。
+
+## 重现与恢复命令
+
+本机生成最终候选（不改原始训练权重目录）：
+
+```sh
+vendor/py/bin/python tools/wake-tune-container.py temp/analysis/wake-train/d96-v5/model.binn temp/analysis/wake-tune-r34/l1-basemin0.binn --min-self-loop 0
+vendor/py/bin/python tools/wake-tune-container.py temp/analysis/wake-train/l2-d160/model.binn temp/analysis/wake-tune-r34/l2-basemin0.binn --min-self-loop 0
+vendor/py/bin/python tools/wake-tune-container.py temp/analysis/wake-tune-r34/l2-basemin0.binn temp/analysis/wake-tune-r34/l2-min0-step3.binn --fst-json temp/analysis/wake-train/l2-d160/fst-decoded.json --keyword-step-weight 3
+sh tools/build-wake-model-probe.sh
+```
+
+设备测试需先暂停仅Duplex以避免双引擎内存压力，上传小probe与候选至短暂/tmp路径；经已配置的安全SSH认证运行以下远端命令，并将Mac既有PCM作为SSH stdin，不上传整段PCM文件：
+
+```sh
+timeout -t 45 /lib/ld-linux-armhf.so.3 /tmp/wake-tune-r34/probe --model1 /tmp/wake-tune-r34/l1.binn --model2 /tmp/wake-tune-r34/l2.binn --pcm16le -
+```
+
+恢复步骤：停止Duplex；将Mac private/deploy-recovery/r34/的两个原模型上传小staging；先分别核对de899046…和5945e591…，再覆盖/data/lx06-agent/models/d96-v5.binn、l2-d160.binn并chmod0600/sync；核对正式文件完整SHA256；通过当前受保护stdin流程启动start.sh 3600，确认key_loaded/factory ready和采集；删除staging。不要在设备留下历史模型或revision备份。此恢复只保留了可核对文件与步骤，本轮没有真的回滚验收。

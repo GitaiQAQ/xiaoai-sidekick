@@ -232,3 +232,31 @@
 151. 2026-11-02 文档整理时将第三十四轮最终安装记录并入同主题报告，并更新当前上下文：平衡档设备侧FST/config已安装，Duplex二进制未变；片段命中13/58、合并句7/35、TTS相近词误接受3/20，纯音乐两段各0确认。没有新真人关键词验收或云会话验收；仓库`models/wake-doubao-v5/`保留基线v5声学权重，不含设备上调整后的容器。证据来自第三十四轮报告，本次仅文档整理，无设备操作。
 
 152. 2026-11-03 复核最新唤醒/会话状态时发现第三十五轮候选：一般对话指令被简化，采集改为单一线程和有界preroll队列，避免建会话期间丢帧。报告记载合成handoff与session policy检查、ARM `-Werror` 构建通过；候选SHA 06908fb5…e17fc，未实机部署或做真人语音验收。同步更新KWS当前行为说明、项目上下文和知识导航；删除被新报告/当前说明取代的历史操作指南与过期路线图，另将部署恢复说明收敛为一份当前规则。本次只做文档核对，不执行设备操作。
+
+150. 2026-11-03 第三十五轮部署：极简通用prompt移除音乐长流程；2秒前滚、唯一采集线程贯穿ack/连接/会话/清理，16秒有界PCM内存队列绝对20ms发送，join后交回KWS。合成单读者/顺序/溢出/退出/重启与session-policy21项及ARM编译通过。固定合成语音真实API身份/数学回答正确且无music调用；后续线程收尾修改经本地测试未重复云调用，真人未现场复核。最新Duplex4b03d99e…f15c5ef6、PID2935，Web2359，Key1/standby，音乐播放循环正常；Macprivate/r35恢复、tmp清。报告 realtime-wake-handoff-and-general-dialogue-fix.md；34报告改英文名并补ARM/Mac不同口径。
+
+151. 2026-11-03 用户提供静音音频6Token/s计费信息并明确取消待机长连接方案（未独立核实费率）。已通知部署代理停止待机预连接/空闲计费对照：待机本地KWS无云连接，唤醒建立双向会话，对话内保持复用、full双工和AEC，空闲超时关闭，追问不重连。context记录最终连接规则；当前超时新值部署状态待代理确认。
+
+152. 2026-11-03 用户设置唤醒可用门槛为现有35句35/35命中。已同步模型/部署代理，要求固定时标逐句候选与二级拒绝分析、保留音乐零误触发，不以确认总数或扩大匹配窗口代替召回。notes/context同步，当前7/35不达标；后续35句调优成功仍需独立现场复核。
+
+153. 2026-11-03 35句逐句漏检与MFCC静态审计：7确认/10二级拒绝/18无一级候选，Mac一级17句与ARM一级候选17句重合；静态未发现明确特征实现错误，float训练与S16输入契约差异待真实增强验证。新增mfcc-frontend-and-s3-miss-audit.md及temp忽略证据，未操作设备。后续继续本地量化影响和真人覆盖优化，35/35仍未达标。
+
+154. 2026-11-03 部署代理会话补丁最终efe0fd89eba180edfc83f81305b4b8b6a49517655b32580dde7798b80ec641c9/PID2794：20秒静默/无进展、30min保险，mock跨70秒/工具期间上行/超时通过；AEC guard failclosed、待机无TCP预连接，恢复Macprivate/r36/timeout-prior，staging清。旧原厂mipns3576实证OOM kill，procd约5秒恢复PID1629（USER_HZ100时间换算推断），pns status0且二次存活；早于最后部署，未验米家端到端。报告full-duplex-upload-and-wake-response-policy.md。模型代理96对PCM量化审计和3epoch成对微调完成：Mac一级17→24/35但音乐s2b两候选均2事件，拒晋级；S16未优float。新增两audit/finetune工具及pcm-quantization-and-short-finetune-audit.md，未改现用模型。
+
+155. 2026-11-03 音乐工具失败定位：实际搜索149297，prepare成功，commit2ms失败，CDN URL内存测286字节超过队列<160约束，未输出URL/票据，播放器无有效进度。将web/netease短URL修复交回部署代理，主代理不并行改文件；待原工具端到端实际播放验收。已有15秒票据确认截止与安全元数据补丁，普通对话不限15秒。本记录非修复完成。
+
+156. 2026-11-03 第三十七轮音乐修复部署：Web55aa0dcf…54f5c98/PID536，Duplex435477cf…18f4f12e/PID3796。单首短/r修286字节URL拒绝、等待ubus时处理本地/r并核目标ID；歌单trackIds+32首详情批次保留600。原工具search/play/commit=1，status1/netease149297/队列1，进度0→3108ms；直接play进度0→3380ms，ownedstop1/status2。榜单100/歌单538 preparepass未commit，metadata/parser过。中途Web3921/464两次OOM恢复，最终RSS2428kB，原厂六进程存活，待机仅Unix socket无云连接，Mac恢复/staging清。报告music-tool-short-url-and-playback-confirmation-fix.md。
+
+157. 2026-11-03 用户要求subagent继续提升唤醒准确率/触发率至100%，并行让另一subagent全面调查和接入音箱tools。复用train_sol与deploy_sol分别继续训练、能力调查/实现/测试/应用部署，主代理维护context/log并审查；当前未新增模型或部署。固定35句35/35、480秒音乐0目标，不扩大匹配窗，不以Mac一级分数代替ARM双级确认；本轮先保持s3不参与梯度，无新录音。源码复核发现强制对齐关键词状态无时长上限，已交训练代理量化边界/背景标签问题（原因待实验）。tools优先复用已有日常控制接口，危险系统操作不作为无确认模型工具，设备写入前准备Mac校验恢复材料。context中第35轮“未部署”旧状态依据第35–37轮报告和日志纠正，区分历史实测与本轮仅任务启动。
+
+158. 2026-11-03 主代理本机复算基线l2-d160连续参考margin：原10个ARM二级拒绝组的固定窗口均0帧margin<0，最低值8.894–24.327；支持二级声学覆盖问题，非原厂缓存/截止帧实测。读取既有对齐审计发现89真人源有20源KW≤16帧，提醒训练代理检查强制极短路径并避免把低电平一律当背景。新增second-stage-continuous-reference-diagnosis.md，无设备访问。为继续用户目标，授权当前不含s3对照完成后可用既有人工s3正例做有界微调，明确改为训练集/已知集达标，保留独立负例，不新录音。tools代理首轮实读多项日常接口，仍在核实和实现；未宣称全部接入。
+
+159. 2026-11-03 用户今晚休息，明确限制仅开发与Mac本地验证、不得实际控制音箱或部署。立即通知两代理，interrupt deploy_sol停止原设备任务后以LOCAL ONLY恢复开发；禁止后续SSH/设备读写/ubus/播放/设置/重启/staging/部署，train_sol同样禁止ARM实机回放。早先部署授权被本次限制覆盖，候选仅保留Mac。tools代理根据已有记录确认无运行设备命令、新能力未构建部署；限制前试睡眠timer set/cancel均code162/type0无变化，7天后owned临时alarm创建/关闭/开启后已删除，未动用户已有闹钟；最后只读status1/loop_type1，未暂停或改队列，无音量/灯光/模式/蓝牙写入。此为代理既有记录回报，主代理没有为核对再访问设备。context及计划同步，不宣称新tools已部署。
+
+160. 2026-11-03 LOCAL ONLY训练十候选完成（wake-boundary-constrained-training.md）：有界4–40帧状态/背景边界、train难负例和prior校正BG hinge对照；后续58人工s3正例明确转train/拟合集，s2b/dev无梯度。strong Mac L1 22/35、音乐0/0、近词34/191（S16基线17/35、0/0、42/191）；strong L2图4为6/35、0/0、5/191，固定r34图3参考13/35、音乐1/0、11/191。严格/召回review pair Mac同组交集11/35与14/35，不是ARM确认或真实上下界，均不晋级。十BINN往返/非AM控制字节保持/导出误差<1e-5和manifest检查由训练代理完成，主代理读报告复核。继续独立片段语义与组级监督分析，不设备访问、不部署。
+
+161. 2026-11-03 LOCAL ONLY tools候选13→35（新增22），speaker-capability-tools-integration.md记录能力范围、未接IR/MiHome/BT控制/未验证setter等。主代理重跑test-speaker-tools-local.sh全过：cap146/bridge163/Web真实endpoint22/catalog35且9201B、session9542B/灯自有层/full-half/20秒timeouts/policy26。本地ARM候选初版Web ea787bb8…cb60a/Duplex8b738400…aeaee哈希复核相符，尚未设备执行或云schema验收。审查另发现bridge过长/非string模型arguments默认{}可绕过Web坏参数拒绝，交tools代理本地修复并补不执行回归、重构候选；初版不能当最终验收版本。主代理未访问设备，context同步仅本地状态。
+
+162. 2026-11-03 tools桥入口参数修正完成（LOCAL ONLY）：worker/tb_call不再把缺失、非string、过大、嵌入NUL或坏JSON参数替换{}执行；明确要求无参调用传字符串"{}"。music_stop/session_end不执行回归补齐，bridge259检查。主代理再次重跑全套Mac测试cap146/bridge259/endpoint22/catalog35/灯/full-half/timeout/policy26均通过，无设备/云连接。最终本地Web ea787bb8…cb60a/94024B，Duplex2c575af5…fe677/117476B，哈希复核相符；ARM只交叉构建，未运行、未部署。context与报告同步。训练代理后续语义审计58个S3片段只有13有完整文字支持、45不明确，不能据此否定人工pos；按原35组做本地组监督对照中，不改人工标签、不设备访问。
+
+163. 2026-11-03 组级监督本地followup四候选完成，wake-group-label-supervision.md及tools/wake-group-semantics.py/wake-group-train.py交付：S1 89pos→60组/S3 58→35组，未标gap填等长零音；BG5对比仅24多片段合格组BG0，同MFCC特征SHA，BG0无召回收益。Mac L1两者18/35，L2图4两者9/35，均音乐0/0；固定r34图3 L2两者13/35且音乐0/0，旧strong同13/35但音乐1/0。64源ASR文字不明确、可靠半词证据0，原人工标签未改。混合review pair保留strongL1+groupBG5L2，Mac同组交集11/35非ARM确认/真实上下界；主代理读summary/报告并核L1 639597B/3f065dbd…92c93、L2 1678701B/2a7188d0…9c19、py_compile及git diff --check通过。四BINN往返/非AM冻结/export<1e-5/微批等价由代理实测。全部候选仅Mac，本轮未达35/35、不晋级、不部署，用户设备禁令继续有效。
