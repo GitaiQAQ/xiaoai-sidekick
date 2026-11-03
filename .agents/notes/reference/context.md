@@ -40,7 +40,8 @@ Review found and corrected another bridge validation gap: oversized or non-strin
 
 ## Windows development host
 
-- The Windows toolchain migration uses system-installed Zig 0.13.0 and Python 3.12; the PowerShell helper resolves executables from PATH. The curl 7.55.1 headers required by native builds are checked in under `third_party/curl-7.55.1/` with their license.
+- The Windows toolchain uses system-installed Zig 0.13.0 and Python 3.12. The user reports Git Bash is installed. All 14 project `.ps1` entry points have been migrated to Bash `.sh` scripts; invoke them with `bash tools/NAME.sh`. Git Bash reads the merged Windows `PATH`, and `LX06_ZIG` / `LX06_PYTHON` can select explicit executables. The curl 7.55.1 headers required by native builds are checked in under `third_party/curl-7.55.1/` with their license.
+- The shared Bash entry points are intended for Git Bash and Bash on Linux/macOS. This is a source-level portability change; no script was run in this round, so runtime parity across hosts remains unverified. Matching script code alone does not pin tool versions or host configuration.
 - The former portable toolchain directory is not part of the project checkout. This Mac keeps the preserved assets under `~/Library/Caches/xiaoai-sidekick`; `LX06_MODEL_CACHE` selects the model-cache root on every platform. Local models and virtual environments are machine-specific inputs and must remain outside the repository.
 
 ## Evidence and operating rules

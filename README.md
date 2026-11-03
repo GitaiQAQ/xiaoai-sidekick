@@ -60,7 +60,7 @@ Do not flash an image or write a partition based only on a successful build. Bef
 
 ## Build and install status
 
-The source includes native C programs, web assets, and build/deployment scripts. The documented primary build path currently uses Windows PowerShell and Zig 0.13; some scripts expect local toolchain files that are intentionally not committed. macOS/Linux setup is not yet a clean-clone workflow. The repository does **not** currently let a new user build a complete firmware image and safely install it from source alone.
+The source includes native C programs, web assets, and build/deployment scripts. Project automation uses Bash scripts on Windows (through Git Bash), macOS, and Linux, with Zig 0.13 and host Python tools. Some scripts still require local firmware inputs, device credentials, or separately installed packages. The repository does **not** currently let a new user build a complete firmware image and safely install it from source alone.
 
 For the existing application build commands and their prerequisites, see [tools/README.md](tools/README.md). Do not treat an application binary build as a firmware image build. Installation is device-specific and should only be attempted after the recovery plan described above is ready.
 

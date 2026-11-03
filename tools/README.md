@@ -8,24 +8,27 @@ This directory contains project-owned scripts for building, inspecting, training
 
 | Group | Examples | Purpose |
 |---|---|---|
-| Build | `Build-NativeGlibc.ps1`, `build-factory-wake.sh` | Cross-compile ARM programs for the LX06 runtime and inspect ELF dependencies. |
-| Device operations | `Invoke-LX06.ps1`, `Manage-LX06Service.ps1`, `Manage-LX06Web.ps1` | Run approved SSH operations and manage the Sidekick services. |
+| Build | `Build-NativeGlibc.sh`, `Build-NativeProbe.sh`, `Build-WakeProbes.sh`, `build-factory-wake.sh` | Cross-compile ARM programs for the LX06 runtime and inspect ELF dependencies. |
+| Device operations | `Invoke-LX06.sh`, `Manage-LX06Service.sh`, `Manage-LX06Web.sh`, `Invoke-DoubaoSmoke.sh` | Run SSH operations and manage the Sidekick services. |
 | Wake model | `wake-train.py`, `wake-label.py`, `wake-review.py`, `native-model-am.py`, `native-model-pack.py` | Prepare labels, train and evaluate acoustic models, and read/write the factory BINN container. |
 | Audio data | `lx06-record.py`, `lx06-aec-offline.c`, `tts-corpus.py` | Capture user-authorized recordings, replay the AEC chain offline, and generate synthetic speech data. |
-| Firmware analysis | `native-*.py`, `analyze-native-wakeup.py`, `Compare-Rootfs.ps1` | Inspect locally available firmware and write derived results under ignored `temp/`. |
+| Firmware analysis | `native-*.py`, `analyze-native-wakeup.py`, `Compare-Rootfs.sh`, `Run-NativeProbe.sh` | Inspect locally available firmware and write derived results under ignored `temp/`. |
+| Inputs and tuning | `Fetch-Inputs.sh`, `kws-tune.sh`, `Test-NativeMusic.sh` | Fetch checksum-pinned public inputs, tune local wake scoring, and run explicit device-side music checks. |
 | Checks | `Check-LocalCredentials.py`, `Check-WebConsole.py`, `Check-NeteaseCharts.py` | Check local configuration or service behavior without printing credential values. |
 
 ## Host dependencies
 
-Use system-installed tools. Windows PowerShell scripts resolve Zig and Python from `PATH` through `tools/Resolve-SystemTool.ps1`; install Zig 0.13.0 and Python 3.12, then install the Python packages listed below. macOS and Linux scripts use the system `zig` command or the `LX06_ZIG` override where supported. The required curl 7.55.1 headers are included at `third_party/curl-7.55.1/include/` with the upstream license.
+The project scripts use Bash on Windows, macOS, and Linux. On Windows, install Git for Windows and run them from Git Bash; on other hosts use the system Bash. Invoke scripts with `bash tools/NAME.sh` from any working directory. They resolve the checkout from their own location. Git Bash searches the merged Windows `PATH`, while macOS/Linux use their native `PATH`. Set `LX06_ZIG` or `LX06_PYTHON` to override a tool path. The required curl 7.55.1 headers are included at `third_party/curl-7.55.1/include/` with the upstream license.
 
-On Windows, the tested setup uses:
+On Windows, install the system tools from PowerShell or Windows Terminal:
 
 ```powershell
 winget install --id zig.zig --exact --version 0.13.0
 winget install --id Python.Python.3.12 --exact --version 3.12.10
 python -m pip install --user capstone==5.0.3 pyelftools==0.31
 ```
+
+Then run a project script in Git Bash, for example `bash tools/Build-NativeProbe.sh`. The shell entry points require Bash features and are not intended for `cmd.exe` or PowerShell execution.
 
 7-Zip is optional and is only needed to unpack archives. Other hosts should install compatible system packages with their native package manager.
 
@@ -52,6 +55,7 @@ These commands illustrate the current interface. They do not fetch datasets or f
 - `temp/` contains generated or reconstructable inputs and results; never treat it as a release artifact without a separate review.
 - Device write operations must follow the repository's deployment and recovery procedure. A successful command exit alone does not prove that the target device read or accepted the intended bytes.
 - Credential checks must report presence or validity flags only, never the secret itself.
+- Device scripts need a host-local `known_hosts` file (`LX06_KNOWN_HOSTS` selects its path). Windows Git Bash also uses the ignored `tools/local/ssh-askpass.cmd`. On Linux/macOS, use an SSH key or set `LX06_ASKPASS` to a local askpass program; the included `tools/ssh-askpass.sh` reads `LX06_SSH_PASSWORD` from the environment and needs its executable bit set after checkout (`chmod +x tools/ssh-askpass.sh`). Do not put passwords or API keys in command arguments or shell history.
 
 ## Current limitations
 
