@@ -1,5 +1,7 @@
 param([string]$ProjectDir='C:\Users\gitai\Desktop\lx06-agent',[switch]$Install,[switch]$Start,[switch]$Stop,[switch]$Status,[switch]$NoVoiceKey)
 $ErrorActionPreference='Stop'
+. (Join-Path $ProjectDir 'tools\Resolve-SystemTool.ps1')
+$python=Resolve-SystemTool 'python.exe'
 $dir='/data/lx06-agent'
 $code=Get-Content -Raw (Join-Path $ProjectDir 'tools\Invoke-LX06.ps1')
 $runner=[scriptblock]::Create($code.Replace('$projectDir=Split-Path -Parent $PSScriptRoot',"`$projectDir='$ProjectDir'"))
@@ -24,7 +26,7 @@ echo web_stopped
  Remote $stopScript
 }
 if($Install){
- & (Join-Path $ProjectDir 'vendor\python-analysis\python.exe') (Join-Path $ProjectDir 'tools\native-library-elf.py') lx06-web-armhf
+ & $python (Join-Path $ProjectDir 'tools\native-library-elf.py') lx06-web-armhf
  if($LASTEXITCODE){throw 'ELF validation failed'}
  Remote 'set -eu; mkdir -p /data/lx06-agent/web; chmod 700 /data/lx06-agent /data/lx06-agent/web'
  $files=[ordered]@{

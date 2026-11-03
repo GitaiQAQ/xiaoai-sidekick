@@ -17,7 +17,17 @@ This directory contains project-owned scripts for building, inspecting, training
 
 ## Host dependencies
 
-Use system-installed tools where possible. The scripts do not require a directory named `vendor/`; specify a tool path through the documented command-line option or environment variable when a script supports one. Some legacy PowerShell scripts still contain machine-specific paths and are not yet portable.
+Use system-installed tools. Windows PowerShell scripts resolve Zig and Python from `PATH` through `tools/Resolve-SystemTool.ps1`; install Zig 0.13.0 and Python 3.12, then install the Python packages listed below. macOS and Linux scripts use the system `zig` command or the `LX06_ZIG` override where supported. The required curl 7.55.1 headers are included at `third_party/curl-7.55.1/include/` with the upstream license.
+
+On Windows, the tested setup uses:
+
+```powershell
+winget install --id zig.zig --exact --version 0.13.0
+winget install --id Python.Python.3.12 --exact --version 3.12.10
+python -m pip install --user capstone==5.0.3 pyelftools==0.31
+```
+
+7-Zip is optional and is only needed to unpack archives. Other hosts should install compatible system packages with their native package manager.
 
 For model training, install Python 3.9 or newer and the packages `numpy`, `torch`, `sherpa-onnx`, and `soundfile` in a user-managed virtual environment. Install ASR and TTS models separately and follow their upstream licenses. The exact model set depends on whether you generate synthetic speech, transcribe recordings, or train from an existing prepared corpus.
 
@@ -44,5 +54,5 @@ These commands illustrate the current interface. They do not fetch datasets or f
 ## Current limitations
 
 - The training workflow is research tooling, not a turnkey user-facing trainer. It needs private recordings or a prepared corpus, separately installed models, and factory graph templates.
-- Several PowerShell and analysis scripts still assume local Windows or `vendor/` paths. They need migration before the repository can claim clean-checkout reproducibility.
+- Some analysis scripts still require local firmware templates, recordings, or separately downloaded speech models. These inputs are not included in a clean checkout.
 - The build scripts produce selected ARM executables. They do not currently rebuild and package a complete flashable ROM from a clean checkout.

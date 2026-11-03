@@ -1,6 +1,7 @@
 param([string]$ProjectDir='C:\Users\gitai\Desktop\lx06-agent',[switch]$HostTest)
 $ErrorActionPreference='Stop'
-$zig=Join-Path $ProjectDir 'vendor\zig-portable\zig-windows-x86_64-0.13.0\zig.exe'
+. (Join-Path $ProjectDir 'tools\Resolve-SystemTool.ps1')
+$zig=Resolve-SystemTool 'zig.exe'
 $out=Join-Path $ProjectDir 'build'
 [void][IO.Directory]::CreateDirectory($out)
 $sources=@((Join-Path $ProjectDir 'src\native_protocol.c'),(Join-Path $ProjectDir 'src\lx06_probe.c'))

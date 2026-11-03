@@ -4,10 +4,12 @@ param([string]$ProjectDir='C:\Users\gitai\Desktop\lx06-agent',
       [ValidateRange(0,1024)][int]$SocketFd=8,
       [ValidateRange(1,300)][int]$Seconds=5)
 $ErrorActionPreference='Stop'
+. (Join-Path $ProjectDir 'tools\Resolve-SystemTool.ps1')
+$python=Resolve-SystemTool 'python.exe'
 $name=switch($Kind){'probe'{'lx06-probe-armhf'} 'socket-test'{'lx06-socket-test-armhf'} 'libraries'{'lx06-library-probe-armhf'} 'tls'{'lx06-library-probe-armhf'} 'ark-test'{'lx06-ark-client-armhf'} 'ws-transport'{'lx06-library-probe-armhf'} 'ws-test'{'lx06-library-probe-armhf'} 'ws-loopback'{'lx06-library-probe-armhf'} 'afe-frame'{'lx06-afe-frame-armhf'} 'kws-enroll'{'lx06-kws-enroll-armhf'} 'feedback-test'{'lx06-duplex-armhf'} 'kws-score'{'lx06-duplex-armhf'} 'kws-live'{'lx06-duplex-armhf'} 'kws-capture'{'lx06-duplex-armhf'} 'kws-replay'{'lx06-duplex-armhf'} 'kws-standby'{'lx06-duplex-armhf'} 'kws-signal'{'lx06-duplex-armhf'} default{'lx06-speech-observer-armhf'}}
 $file=Join-Path $ProjectDir "build\$name"
 if($Kind -in @('libraries','tls','ark-test','ws-transport','ws-test','ws-loopback','afe-frame','kws-enroll','feedback-test','kws-score','kws-live','kws-capture','kws-replay','kws-standby','kws-signal')){
-    & (Join-Path $ProjectDir 'vendor\python-analysis\python.exe') (Join-Path $ProjectDir 'tools\native-library-elf.py') $name
+    & $python (Join-Path $ProjectDir 'tools\native-library-elf.py') $name
     if($LASTEXITCODE -ne 0){throw 'Firmware-loader ELF validation failed'}
 }
 $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()

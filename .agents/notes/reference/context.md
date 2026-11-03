@@ -38,6 +38,11 @@ Review found and corrected another bridge validation gap: oversized or non-strin
 
 **Latest user authorization:** after the local-only work, the user explicitly requested “部署”. The current task is to deploy and verify the locally validated 35-tool Web/Duplex application pair, with fresh Mac-only recovery material from the actual running device. This lifts the overnight device restriction for this deployment and its necessary acceptance checks. It does not promote the wake candidates that failed 35/35, authorize ROM flashing, or authorize new corpus recording. Keep the current device wake models unchanged. Preserve the factory player, XiaoAI, Mi Home and Mesh; avoid interrupting an active voice session or changing a user's playing queue during tests. Device deployment is in progress, not yet verified complete.
 
+## Windows development host
+
+- The Windows toolchain migration uses system-installed Zig 0.13.0 and Python 3.12; the PowerShell helper resolves executables from PATH. The curl 7.55.1 headers required by native builds are checked in under `third_party/curl-7.55.1/` with their license.
+- The former portable toolchain directory is not part of the project checkout. Local model caches and virtual environments are machine-specific inputs and must remain outside the repository.
+
 ## Evidence and operating rules
 
 - Separate measured results, public-source claims, inference, and unknown behavior.

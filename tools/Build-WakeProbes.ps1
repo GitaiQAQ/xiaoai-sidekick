@@ -1,6 +1,7 @@
 param([string]$ProjectDir=(Split-Path -Parent $PSScriptRoot))
 $ErrorActionPreference='Continue'
-$zig=Join-Path $ProjectDir 'vendor/zig-portable/zig-windows-x86_64-0.13.0/zig.exe'
+. (Join-Path $ProjectDir 'tools\Resolve-SystemTool.ps1')
+$zig=Resolve-SystemTool 'zig.exe'
 $out=Join-Path $ProjectDir 'build'
 [void][IO.Directory]::CreateDirectory($out)
 & $zig cc -target arm-linux-musleabihf -mcpu=cortex_a53 -std=c11 -Wall -Wextra -Werror -Oz -static -s (Join-Path $ProjectDir 'src/native_wake_config_probe.c') -o (Join-Path $out 'lx06-wake-config-probe-armhf')

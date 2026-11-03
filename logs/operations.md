@@ -262,3 +262,5 @@
 163. 2026-11-03 组级监督本地followup四候选完成，wake-group-label-supervision.md及tools/wake-group-semantics.py/wake-group-train.py交付：S1 89pos→60组/S3 58→35组，未标gap填等长零音；BG5对比仅24多片段合格组BG0，同MFCC特征SHA，BG0无召回收益。Mac L1两者18/35，L2图4两者9/35，均音乐0/0；固定r34图3 L2两者13/35且音乐0/0，旧strong同13/35但音乐1/0。64源ASR文字不明确、可靠半词证据0，原人工标签未改。混合review pair保留strongL1+groupBG5L2，Mac同组交集11/35非ARM确认/真实上下界；主代理读summary/报告并核L1 639597B/3f065dbd…92c93、L2 1678701B/2a7188d0…9c19、py_compile及git diff --check通过。四BINN往返/非AM冻结/export<1e-5/微批等价由代理实测。全部候选仅Mac，本轮未达35/35、不晋级、不部署，用户设备禁令继续有效。
 
 164. 2026-11-03 用户明确请求“部署”，恢复本次35tools应用部署及必要设备验收授权。继续deploy_sol核当前设备、准备Mac实际Web/Duplex/start/stop/灯策略恢复材料并校验，再分文件stage/核hash/替换/启动，设备不留历史副本、不刷ROM、不换未达标wake候选、不新录音。主代理再次核候选Web ea787bb8…cb60a/94024B、Duplex2c575af5…fe677/117476B，并重跑Mac cap146/bridge259/endpoint22/catalog35/灯/full-half/timeout/policy26全通过；本次尚未部署完成。context同步最新明确授权，保留旧本地实验历史证据。
+
+165. 2026-11-03 Windows 工具链迁移：PowerShell 构建和分析脚本改为从系统 PATH 查找 Zig/Python；安装说明改用 WinGet 与 pip。curl 7.55.1 头文件及 COPYING 迁入 `third_party/curl-7.55.1/`，供 ARM 交叉编译使用。`tools/Resolve-SystemTool.ps1` 提供 Windows PATH 解析。工具迁移改动已提交到 `sync/windows-toolchain-20261103`，待并入统一同步分支；未纳入 Windows 工作区之外的本机缓存。
