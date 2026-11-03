@@ -274,3 +274,13 @@
 169. 2026-11-03 按用户选择将本机旧 `vendor/` 整体移出工作区至 `~/Library/Caches/xiaoai-sidekick/`，保留 2.2 GB TTS/ASR 模型与本机 Python/Zig 环境；工作区不再包含 `vendor/`。新增 `LX06_MODEL_CACHE` 跨平台路径解析，训练与标注工具从用户缓存读取语音模型。旧 curl 头文件副本也随缓存保留，构建改用仓库 `third_party/` 版本。
 
 170. 2026-11-03 按用户要求将 tools/ 下 14 个 PowerShell 入口迁移为 Bash：新增构建、工具解析、Rootfs 比较、公开输入获取、SSH/服务管理、冒烟、原生探针、音乐检查及 KWS 调优脚本；共用 SSH/JSON/SHA 辅助与 Linux askpass，移除旧 .ps1 入口并更新 README、tools/README 与上下文。静态审阅确认 Windows 目标通过 Git Bash 调用，远端文件按字节流传输并在脚本中做 SHA-256 校验；这是代码审阅结论，尚未在 Git Bash/Linux/macOS 执行，也未连接设备、下载输入或更改设备状态。用户报告已安装 Git Bash，未独立验证。推断：共享 Bash 实现可减少脚本源代码差异，但依赖版本、PATH、SSH 配置和各主机运行一致性仍未验证。
+
+171. 2026-11-03 用户请求handoff，新增reference/handoff.md并从context链接，汇总35tools已部署/验收、Mac恢复材料、未达标wake候选、睡眠/米家只读调查及现有deploy_sol运行状态。交接时发现并行工具迁移已合入main36856f7，记录vendor移出至用户缓存、third_party curl头、Bash入口和未验证跨主机运行边界，未回滚其他任务。交接本身未再次访问或操作设备；代理部署报告speaker-tools-deployment-and-device-validation.md在交接过程中落盘，主代理复核并链接。
+
+172. 2026-11-03 按用户要求删除reference/handoff.md，移除context中的对应链接，保留现有上下文、部署报告和历史操作记录。无设备操作。
+
+173. 2026-11-03 接续设备能力调查，主代理只读查询LX06/1.94.13的ubus方法和实时状态。`nightmode.set`接受total/light/volume/start/stop字符串，`sleep_mode`接受value/from字符串；status读回sleep_mode=normal、total/light/volume=night、22:00–07:59，current读回三个当前值均normal。`mibt_mesh.mesh_status`读回support/enable/running=true、BTMESH_IDLE。固件静态字符串显示MIoT设备扫描、绑定、属性和场景消息名，但不能证明当前子设备清单、账号授权或可用控制链路。未调用扫描、绑定、miot_rpc、属性/场景方法或setter；未部署、更改设备。详情见speaker-tools-deployment-and-device-validation.md；同步context。本轮没有重复35项工具部署。
+
+174. 2026-11-03 按用户质疑“是否还漏了其他原厂功能”进行完整只读ubus接口枚举：实机1.94.13当前公开26个对象、260条方法签名。与仓库35项模型工具目录对照后，发现红外、整点报时/闹钟策略、儿童模式、通知、投播/多房间、Line-in控制、麦克风/声纹、环境检测等未审候选；同时标记service/system/miio凭据/通用MIoT等高风险接口。未调用任何方法或改变设备。新报告factory-runtime-interface-inventory.md记录方法类别、证据等级及后续审查顺序，并同步context；260为方法签名数，不等于260项已理解或可开放功能。
+
+175. 2026-11-03 按用户要求结合逆向结果记录原厂协议。读取运行中的mibt_mesh_rtl可执行文件（`/proc/3518/exe`，SHA-256 `bc5c03e5…cb7bac`）并确认它与只读ROM版本不同；未读取配置、数据库或密钥。依据运行时ubus签名、固件字符串/导入项、既有调用记录，新增factory-protocol-reverse-engineering.md与factory-runtime-ubus-signatures.md，分析 speaker MIoT/nightmode、Mesh子设备树及属性/场景路径、alarm/chime/store-show/ai_crontab、IR、player/casting、voice print、child mode、VoIP和系统/凭据边界；未知消息封包和值域明确标为未恢复。未调用扫描、绑定、属性/场景写、红外、通话或其他状态变更接口。更新interface inventory、deployment report、context、sources；diff、Markdown引用与代码围栏检查通过。

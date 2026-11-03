@@ -51,3 +51,5 @@
 第十六轮：以机内HTTP/原厂播放器状态和用户扫码/听音反馈为实证。eapi算法参考api-enhanced/util/crypto.js，二维码依赖Kazuhiko Arase qrcode-generator（MIT，web/QRCODE-LICENSE.txt），https://github.com/kazuhikoarase/qrcode-generator 。当前实测eapi账号与音源接口可用，不能据上游xeapi默认方式断言本机eapi不可用。
 
 2026-11-03 PC 工具链改为系统 WinGet/pip 安装；保留的 curl 7.55.1 头文件及 COPYING 从 vendor 迁至 third_party/curl-7.55.1，哈希核对一致。Windows OpenSSH Server 现场检查显示运行中并监听 22；LAN SSH/SFTP 外部连接尚未实测。
+
+2026-11-03 原厂功能协议逆向以 LX06/1.94.13 的运行时 `ubus list`/`ubus -v list` 签名和本地提取的 system0 ELF 为证据；完整签名快照见 [运行时 ubus 签名报告](../reports/factory-runtime-ubus-signatures.md)。`mibt_mesh_rtl` 从 `/data/miio_mpkg/bin/` 运行且与只读 ROM 二进制哈希不同，因此 Mesh 静态结论基于只读下载并核对哈希的运行中 ELF；只读取了 `/proc/3518/exe` 二进制，没有读取其配置、数据库或密钥。协议结构、推断和未确认边界见[协议逆向报告](../reports/factory-protocol-reverse-engineering.md)。其他匹配的执行文件、字符串和导入项只支持局部调用路径，不能替代消息抓包或受控端到端验证。本轮未调用设置、扫描、绑定、红外、语音打印、通话或任意 MIoT/RPC 方法。
