@@ -6,20 +6,21 @@ Usage:
   tools/tts-corpus.py --labels pos --limit 20      # smoke test
 
 Engines: macOS `say`, edge-tts (online Microsoft voices), and offline
-sherpa-onnx VITS/Kokoro/Matcha/Piper models. Needs vendor/tts-venv and
-vendor/tts-models. Writes temp/analysis/tts-corpus/{pos,hardneg,neg} plus
+sherpa-onnx VITS/Kokoro/Matcha/Piper models. Needs sherpa-onnx in the active
+Python environment and model assets under the user cache. Writes
+temp/analysis/tts-corpus/{pos,hardneg,neg} plus
 manifest.csv. Voice/speaker lists are fixed here for reproducibility.
 Text is sent to Microsoft (edge-tts) and Google (gTTS); all other engines are offline.
 """
 from pathlib import Path
+from model_cache import model_cache_root
 import argparse, asyncio, csv, math, random, shutil, subprocess, sys, tempfile
 import numpy as np, soundfile as sf
 import scipy.signal as ss
 
 R = Path(__file__).resolve().parents[1]
 OUT = R / 'temp/analysis/tts-corpus'
-MD = R / 'vendor/tts-models'
-PY = R / 'vendor/tts-venv/bin/python'
+MD = model_cache_root() / 'tts-models'
 
 POS_TEXTS = [
     '豆包豆包', '豆包，豆包', '豆包豆包！', '豆包豆包？',

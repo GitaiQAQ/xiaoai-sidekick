@@ -22,7 +22,7 @@ The repository contains native application source, web assets, scripts, experime
 
 The repository tracks the current experimental model pair under `models/wake-doubao-v5/`. Their SHA-256 values are recorded in the model manifest. They are usable artifacts for the current loader path, not a claim that the wake model meets a release-quality acceptance threshold.
 
-Training scripts are available, but end-to-end training is not reproducible from a clean clone. The workflow still needs user-provided recordings and labels, separately installed Python packages and speech models, and acoustic/FST templates extracted from a compatible factory image. Some scripts assume local `vendor/` paths. See [wake model training](wake-model-training.md) for exact inputs and gaps.
+Training scripts are available, but end-to-end training is not reproducible from a clean clone. The workflow still needs user-provided recordings and labels, separately installed Python packages and speech models, and acoustic/FST templates extracted from a compatible factory image. Model assets are resolved from the user cache through `LX06_MODEL_CACHE`. See [wake model training](wake-model-training.md) for exact inputs and gaps.
 
 ## Active work (2026-11-03)
 
@@ -41,7 +41,7 @@ Review found and corrected another bridge validation gap: oversized or non-strin
 ## Windows development host
 
 - The Windows toolchain migration uses system-installed Zig 0.13.0 and Python 3.12; the PowerShell helper resolves executables from PATH. The curl 7.55.1 headers required by native builds are checked in under `third_party/curl-7.55.1/` with their license.
-- The former portable toolchain directory is not part of the project checkout. Local model caches and virtual environments are machine-specific inputs and must remain outside the repository.
+- The former portable toolchain directory is not part of the project checkout. This Mac keeps the preserved assets under `~/Library/Caches/xiaoai-sidekick`; `LX06_MODEL_CACHE` selects the model-cache root on every platform. Local models and virtual environments are machine-specific inputs and must remain outside the repository.
 
 ## Evidence and operating rules
 

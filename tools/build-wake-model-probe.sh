@@ -2,7 +2,7 @@
 # macOS ARM/glibc probe; run on LX06 via /lib/ld-linux-armhf.so.3.
 set -eu
 cd "$(dirname "$0")/.."
-ZIG=${LX06_ZIG:-vendor/zig/zig-macos-aarch64-0.13.0/zig}
+ZIG=${LX06_ZIG:-zig}
 mkdir -p build
 "$ZIG" cc -target arm-linux-gnueabihf.2.25 -mcpu=cortex_a53 -c src/arm_glibc_entry.S -o build/wake-probe-entry.o
 "$ZIG" cc -target arm-linux-gnueabihf.2.25 -mcpu=cortex_a53 -std=c11 -Oz -fno-stack-protector -c src/arm_glibc_entry.c -o build/wake-probe-bridge.o

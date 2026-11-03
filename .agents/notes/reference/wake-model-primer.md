@@ -558,19 +558,21 @@ console.log('#3 类型', t3, `W 是 ${out}×${inn}`, '前 3 个权重', [f32(), 
 
 ## 13. 自己动手
 
-需要 macOS 上的 `vendor/py` 环境（见 [tools/README.md](../../../tools/README.md)）和已解包的模型（在 `temp/`，不入库）。
+需要 Python 依赖环境和已解包的模型（在 `temp/`，不入库）。本机模型缓存位于 `~/Library/Caches/xiaoai-sidekick`，也可通过 `LX06_MODEL_CACHE` 指定（见 [tools/README.md](../../../tools/README.md)）。
 
 ```sh
+export LX06_MODEL_CACHE="${LX06_MODEL_CACHE:-$HOME/Library/Caches/xiaoai-sidekick}"
+
 # 解析原厂网络并做逐字节往返校验
-vendor/py/bin/python tools/native-model-am.py
+"$LX06_MODEL_CACHE/py/bin/python" tools/native-model-am.py
 
 # 合成一段语音并转成 16k 单声道 s16
 say -v Tingting -o /tmp/t.aiff "小爱同学"
 afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/t.aiff /tmp/t.wav
 
 # 跑一级 / 二级模型
-vendor/py/bin/python tools/native-model-forward.py /tmp/t.wav
-vendor/py/bin/python tools/native-model-forward.py /tmp/t.wav mdata_wakeup_mobile_clone
+"$LX06_MODEL_CACHE/py/bin/python" tools/native-model-forward.py /tmp/t.wav
+"$LX06_MODEL_CACHE/py/bin/python" tools/native-model-forward.py /tmp/t.wav mdata_wakeup_mobile_clone
 ```
 
 可以试试：

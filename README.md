@@ -86,7 +86,7 @@ Never publish personal recordings, recognition transcripts containing personal d
 | `.agents/notes/reports/` | Evidence from experiments and device operations |
 | `.agents/notes/implemented/`, `proposed/`, `rejected/`, `archived/` | Decision records governed by Agent Notes |
 | `logs/operations.md` | Chronological operation record |
-| `private/`, `vendor/`, `temp/`, `build/` | Local/private inputs, dependencies, generated files, and build outputs; not published |
+| `private/`, `temp/`, `build/` | Local/private inputs, generated files, and build outputs; not published. Large speech-model caches stay outside the checkout. |
 
 ## Documentation
 

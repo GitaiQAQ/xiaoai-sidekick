@@ -15,6 +15,7 @@ The training script currently reads these paths relative to the repository root:
 | Input | Expected location | Purpose |
 |---|---|---|
 | Generated TTS corpus and manifests | `temp/analysis/tts-corpus/` | Synthetic positive and negative examples |
+| TTS/ASR speech models | `$LX06_MODEL_CACHE/tts-models/` | Local synthesis and transcription assets; install separately and follow upstream licenses |
 | Factory level-1/level-2 model templates | `temp/analysis/models/mdata_wakeup_mobile/` and `mdata_wakeup_mobile_clone/` | Network configuration, transition model, and decoding graph |
 | Device recordings and derived AEC audio | `private/inputs/recordings/wake-corpus/` | Real speech, quiet background, and music evaluation |
 | Optional human labels | `private/inputs/recordings/wake-corpus/review/labels.csv` | Overrides ASR-derived labels for sessions represented in the file |
@@ -23,7 +24,7 @@ Do not publish personal recordings, review labels, device readbacks, or extracte
 
 ## Current environment limitations
 
-The scripts were developed and run in local Python environments under `vendor/`, which is ignored by Git. The training pipeline uses Python packages including PyTorch, NumPy, SoundFile, SciPy, Sherpa-ONNX, and audio/model assets. Some scripts contain fixed `vendor/...` paths and are not yet configurable through a standard system Python environment variable or a lockfile.
+The scripts were developed with local Python environments and model assets that are ignored by Git and kept outside the checkout. The training pipeline uses Python packages including PyTorch, NumPy, SoundFile, SciPy, and Sherpa-ONNX. Set `LX06_MODEL_CACHE` to the directory containing `tts-models/`; the default is the platform's user cache directory. Install dependencies in a user-managed Python environment and run the scripts with that environment's interpreter.
 
 Therefore a clean clone does not currently contain everything needed to reproduce the published candidate. A contributor must prepare compatible Python dependencies, TTS/ASR assets, factory model templates obtained from an authorized local firmware image, and private recordings. The repository does not redistribute those assets.
 

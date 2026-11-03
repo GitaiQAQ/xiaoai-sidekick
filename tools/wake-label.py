@@ -3,7 +3,7 @@
 Usage: wake-label.py <session> [...]   (sessions under private/inputs/recordings/wake-corpus)
        wake-label.py tts                  (SenseVoice text for every TTS clip -> temp/analysis/tts-corpus/asr.csv)
 Reads <session>.aec16k.wav (host Speex AEC replay), finds energy segments, runs two
-ASR models from vendor/tts-models/asr on each (paraformer-zh-small -> text,
+ASR models from the user model cache on each (paraformer-zh-small -> text,
 SenseVoice int8 -> text2; they fail on different clips under music), and writes
 <session>.segments.csv: start_s,end_s,peak_dbfs,text,text2. Labels are ASR output,
 not human-checked; anything used for training should be reviewed by listening.
@@ -12,10 +12,12 @@ from pathlib import Path
 import csv,sys,wave
 import numpy as np
 import sherpa_onnx
+from model_cache import model_cache_root
 
 R=Path(__file__).resolve().parents[1];C=R/'private/inputs/recordings/wake-corpus'
-A=R/'vendor/tts-models/asr/sherpa-onnx-paraformer-zh-small-2024-03-09'
-SV=R/'vendor/tts-models/asr/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17'
+MD=model_cache_root()/'tts-models'
+A=MD/'asr/sherpa-onnx-paraformer-zh-small-2024-03-09'
+SV=MD/'asr/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17'
 
 def segments(x,sr=16000,win=0.02,gap=0.35,pad=0.15,min_len=0.25,margin_db=12):
     n=int(sr*win);e=10*np.log10(np.maximum((x[:len(x)//n*n].reshape(-1,n).astype(np.float64)**2).mean(1),1e-3)/32768**2)

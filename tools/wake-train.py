@@ -1,6 +1,7 @@
 """Train a "豆包豆包" wake model in the factory Rice/soil format on macOS.
 
-Usage (vendor/train-venv, needs torch):
+Usage: run this script with Python that has torch installed. The local
+training environment may live outside the checkout; see tools/README.md.
   wake-train.py all [--level 1|2] [--dim 96] [--out temp/analysis/wake-train/d96]
   wake-train.py eval --out <dir> [--verify <level-2 dir>]
 --level 2 takes the factory level-2 (mdata_wakeup_mobile_clone) container as template: same

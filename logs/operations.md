@@ -263,4 +263,8 @@
 
 164. 2026-11-03 用户明确请求“部署”，恢复本次35tools应用部署及必要设备验收授权。继续deploy_sol核当前设备、准备Mac实际Web/Duplex/start/stop/灯策略恢复材料并校验，再分文件stage/核hash/替换/启动，设备不留历史副本、不刷ROM、不换未达标wake候选、不新录音。主代理再次核候选Web ea787bb8…cb60a/94024B、Duplex2c575af5…fe677/117476B，并重跑Mac cap146/bridge259/endpoint22/catalog35/灯/full-half/timeout/policy26全通过；本次尚未部署完成。context同步最新明确授权，保留旧本地实验历史证据。
 
-165. 2026-11-03 Windows 工具链迁移：PowerShell 构建和分析脚本改为从系统 PATH 查找 Zig/Python；安装说明改用 WinGet 与 pip。curl 7.55.1 头文件及 COPYING 迁入 `third_party/curl-7.55.1/`，供 ARM 交叉编译使用。`tools/Resolve-SystemTool.ps1` 提供 Windows PATH 解析。工具迁移改动已提交到 `sync/windows-toolchain-20261103`，待并入统一同步分支；未纳入 Windows 工作区之外的本机缓存。
+165. 2026-11-03 部署前旧/tmp SSH askpass/knownhosts已丢失；主代理从本项目2026-11-01既有执行记录恢复受保护askpass(700)，只导入该音箱已有knownhost条目(600)，无密码输出/猜测，额外敏感中间记录已移除。deploy_sol实际恢复包private/deploy-recovery/tools35-20261103(700、文件600)逐项SHA回读相符；设备待机、音乐paused2/volume30/loop0，保留队列进度、现wake模型。主代理独立Mac无音频云配置验收：35项catalog、同model/prompt/audio配置，upgrade101/session.created→session.closed，发送0音频帧/0工具动作；结果temp/analysis/speaker-capabilities/cloud-schema-result.json。本地factory ELF dynsym四JSON接口defined函数核对通过；代理进一步实机ARM ABI和35目录解析通过，并已替换启动Web2353/Duplex2377（验收仍进行中，不算最终完成）。设备curl CLI不支持unix-socket，改已有原生Duplex诊断接口，无依赖安装。
+
+166. 2026-11-03 Windows 工具链迁移：PowerShell 构建和分析脚本改为从系统 PATH 查找 Zig/Python；安装说明改用 WinGet 与 pip。curl 7.55.1 头文件及 COPYING 迁入 `third_party/curl-7.55.1/`，供 ARM 交叉编译使用。`tools/Resolve-SystemTool.ps1` 提供 Windows PATH 解析。工具迁移提交 `f81a277` 已并入统一分支 `7870749`。
+
+167. 2026-11-03 按用户选择将本机旧 `vendor/` 整体移出工作区至 `~/Library/Caches/xiaoai-sidekick/`，保留 2.2 GB TTS/ASR 模型与本机 Python/Zig 环境；工作区不再包含 `vendor/`。新增 `LX06_MODEL_CACHE` 跨平台路径解析，训练与标注工具从用户缓存读取语音模型。旧 curl 头文件副本也随缓存保留，构建改用仓库 `third_party/` 版本。

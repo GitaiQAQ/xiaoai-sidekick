@@ -31,6 +31,8 @@ python -m pip install --user capstone==5.0.3 pyelftools==0.31
 
 For model training, install Python 3.9 or newer and the packages `numpy`, `torch`, `sherpa-onnx`, and `soundfile` in a user-managed virtual environment. Install ASR and TTS models separately and follow their upstream licenses. The exact model set depends on whether you generate synthetic speech, transcribe recordings, or train from an existing prepared corpus.
 
+Set `LX06_MODEL_CACHE` to the user-local directory that contains `tts-models/`. The default is `~/Library/Caches/xiaoai-sidekick` on macOS, `%LOCALAPPDATA%\xiaoai-sidekick` on Windows, and `$XDG_CACHE_HOME/xiaoai-sidekick` (or `~/.cache/xiaoai-sidekick`) on Linux. The repository does not include these model assets or Python environments.
+
 For ARM builds, use Zig 0.13.0 and the LX06-compatible glibc 2.25 target. Some native builds also need the matching curl headers and device ABI reference files. These inputs are not all distributed in this repository, so a clean checkout is not currently sufficient to produce a complete flashable firmware image.
 
 ## Wake model workflow
