@@ -5,23 +5,24 @@
 ## 目录
 
 - `local/`：设备 SSH 凭据（`ssh-askpass.cmd`）与 `known_hosts`。**不发布**，已在 `.gitignore` 中排除。
-- 本目录只放脚本与说明；第三方工具链在 `vendor/`（Zig、嵌入式 Python、7zip、刷机工具、下载包），整棵目录不入库，按下面的“工具链恢复”重建。
+- 构建与分析工具安装在系统中，脚本从 PATH 查找 Zig 与 Python。curl 7.55.1 头文件是 ARM 交叉编译所需的源码接口，保存在 `third_party/curl-7.55.1/` 并附许可证。
 - 脚本可随仓库保存；公开前按下面的检查清单处理设备地址与凭据。
 
-## 工具链恢复
+## 系统工具安装
 
 ```powershell
-# 构建：Zig 0.13.0
-Expand-Archive vendor\downloads\zig-windows-x86_64-0.13.0.zip -DestinationPath vendor\zig-portable -Force
+# 构建：项目脚本使用 Zig 0.13.0
+winget install --id zig.zig --exact --version 0.13.0
 
-# 分析：嵌入式 Python + capstone/pyelftools
-Expand-Archive vendor\downloads\python-3.12.8-embed-amd64.zip -DestinationPath vendor\python-analysis -Force
-# 把两个 wheel 解压到 vendor\python-analysis\Lib\site-packages\
-Expand-Archive vendor\downloads\capstone-5.0.3-py3-none-win_amd64.whl -DestinationPath vendor\python-analysis\Lib\site-packages -Force
-Expand-Archive vendor\downloads\pyelftools-0.31-py3-none-any.whl -DestinationPath vendor\python-analysis\Lib\site-packages -Force
+# 分析：系统 Python 与 Python 模块
+winget install --id Python.Python.3.12 --exact --version 3.12.10
+python -m pip install --user capstone==5.0.3 pyelftools==0.31
+
+# 可选：解包归档
+winget install --id 7zip.7zip --exact
 ```
 
-版本取自 `temp/analysis/capstone-package.json` 与 `pyelftools-package.json`。`7zip-portable` 与刷机工具只用于解包/刷机，构建与分析不需要。
+`capstone` 与 `pyelftools` 版本取自 `temp/analysis/capstone-package.json` 和 `pyelftools-package.json`。7-Zip 仅用于解包，不是构建依赖；专用刷机工具也不参与构建或分析。Git 已由系统安装（`Git.Git`），无需重复安装。项目不再使用 `vendor/` 目录。
 
 ## 脚本分类
 
@@ -36,10 +37,10 @@ Expand-Archive vendor\downloads\pyelftools-0.31-py3-none-any.whl -DestinationPat
 | 对比 | `Compare-Rootfs.ps1` | 对比原厂与补丁根文件系统，写 `temp/manifests/` |
 | 检查 | `Check-LocalCredentials.py`、`Check-WebConsole.py`、`Check-NeteaseCharts.py` | 凭据存在性（不打印值）、控制台与音乐接口回归 |
 
-分析脚本用仓库内的嵌入式 Python 运行（含 capstone/pyelftools）：
+分析脚本使用 PATH 中的系统 Python（含 capstone/pyelftools）：
 
 ```powershell
-vendor\python-analysis\python.exe tools\analyze-native-wakeup.py
+python tools\analyze-native-wakeup.py
 ```
 
 ## 输入与输出
@@ -58,7 +59,7 @@ vendor\python-analysis\python.exe tools\analyze-native-wakeup.py
 - `tools/local/` 永不发布。
 - 其他脚本含内网地址 `192.168.100.210`、设备路径 `/data/lx06-agent/`；公开版本应把这些提为参数或示例值。
 - `Invoke-*.ps1` 从 `private/credentials.json` 或 stdin 读取凭据，不要在脚本里新增明文。
-- 构建脚本引用 `tools/zig-portable`、`vendor/python-analysis`；这两个目录体积较大，公开仓库可选择只保留下载说明。
+- 构建脚本从 PATH 查找 Zig 与 Python；curl 头文件使用 `third_party/curl-7.55.1/include`。
 
 ## 约定
 

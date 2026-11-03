@@ -180,3 +180,5 @@
 125. 2026-11-01 第二十四轮原厂逆向：固定字段探针只读原厂进程108B，两级chunk5、loop1/80、acoustic-scale0.1、wait60等实值；错误目标退出2。独立引擎探针预加载原有pthread/stdC++/ALSA后，WakeupInit/Destroy成功，缺省模型路径即使不存在仍用内置权重。10秒生成静音批量推理622ms、峰值RSS7040kB、非零标志0；离线SAPI小爱同学一级候选score8.114393、二级未确认、flag2超时（非现场召回验收）。探针最终7596B/SHA1dbca992…efa9c，依赖原厂库；构建脚本与符号所有者分析工具入库。测试仅/tmp，临时文件已清，原厂PID1282/2527、TracerPid0、正式Duplex哈希未变；无现场录音、无模型/固件/生产服务修改。报告/上下文/来源/工具说明同步，豆包模型与误激活修复仍未完成。
 
 126. 2026-11-01 按用户要求准备 GitHub/Claude 交接提交：新增 reference/claude-wake-analysis.md 长期入口，根 README 与上下文链接；仅纳入源码、工具、报告、规范和公共资料元数据，私有凭据/录音/设备备份/固件/工具链/构建产物/运行日志继续忽略。准备便携 Git（vendor内，不入库）核对真实差异；本机 HTTPS 推送无登录凭据，改用已有授权 GitHub 连接发布。Web/Duplex ARM构建与ELF检查、Notes门禁通过；误激活未修复，发布完成以最终远端验证为准。
+
+127. 2026-11-03 PC 工具链转为系统安装：实测 WinGet 已安装 Zig 0.13.0、Python 3.12.10、7-Zip 26.05；Git.Git 2.56.0.4 原已安装；系统 Python 已安装 capstone 5.0.3、pyelftools 0.31。项目 PowerShell 构建/分析脚本改为解析系统 PATH，README 改写为 WinGet/pip 安装说明。用户要求清空 vendor 后，先将原 curl 7.55.1 头文件与 COPYING 按 SHA256 核对迁至 third_party/curl-7.55.1，再删除 vendor 全目录（约 815 MB）；项目专用工具、下载缓存及实验 Sherpa 文件随该目录删除。SSHD 未新启：实测 Windows OpenSSH Server 已运行并监听 22，WLAN 地址 192.168.100.117，本机 TCP 探测成功；另一台电脑可用 SFTP 上传至 Desktop/lx06-agent。未变更 SSH 配置或防火墙。

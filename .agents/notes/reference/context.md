@@ -318,3 +318,11 @@ Agent loop：新增 `src/native_agent_loop.h`，提供 provider 接口（stats/s
 - 资源：单核约 21%，RSS 约 2.3 MB。
 
 线上验证：音乐播放中两次真人“豆包豆包”以 12.5082、14.6845 在候选暂停后确认，会话正常建立并恢复播放；同一实例有 2 次未确认暂停。用户确认可用。高音量、远场、打断和长时间稳定性未验证。诊断入口 `--mic-compare <秒>` 只在内存里并行打分各采集版本。报告见 `reports/采集路径回声消除接入-第二十二轮.md`。
+
+## 2026-11-03 PC 工具链与 SSH 状态
+
+- 实测：WinGet 已安装 Zig 0.13.0、Python 3.12.10、7-Zip 26.05；Git.Git 2.56.0.4 原已安装。系统 Python 中 capstone 5.0.3 与 pyelftools 0.31 可导入。
+- 实测：项目构建/分析 PowerShell 脚本已改为从系统 PATH 解析 Zig 与 Python；`vendor/` 已删除。curl 7.55.1 头文件和 COPYING 在迁移前后 SHA256 一致，现位于 `third_party/curl-7.55.1/`。
+- 实测：Windows OpenSSH Server 已运行，监听 TCP 22；WLAN IPv4 为 192.168.100.117，本机 TCP 探测成功。没有修改 SSH 配置或防火墙。SFTP 上传项目目录可用相对用户主目录的 `Desktop/lx06-agent`。
+- 公开资料：WinGet 包 ID 为 `zig.zig`、`Python.Python.3.12`、`7zip.7zip`；项目安装说明见 `tools/README.md`。
+- 推断：同一局域网另一台电脑可通过 `gitai@192.168.100.117` 连接；能否通过其他网络访问取决于网络和防火墙策略，尚未从另一台设备实测。

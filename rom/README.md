@@ -52,7 +52,7 @@ unsquashfs -d temp/rootfs-patched LX06_1.94.13_patched.squashfs
 
 ```powershell
 powershell -NoProfile -File tools/Compare-Rootfs.ps1
-tools\python-analysis\python.exe tools\analyze-native-wakeup.py
+python tools\analyze-native-wakeup.py
 ```
 
 ## 许可

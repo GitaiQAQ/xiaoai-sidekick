@@ -49,3 +49,5 @@
 网易云协议参考（2026-11-01，本轮读源码未调用服务）：https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced/tree/main/module 下login_qr_key.js、login_qr_check.js、song_url_v1.js、vip_info.js。当前URL接口xeapi，不照搬旧weapi假设；详细路径见docs/NETEASE_ACCOUNT_PLAN.md。
 
 第十六轮：以机内HTTP/原厂播放器状态和用户扫码/听音反馈为实证。eapi算法参考api-enhanced/util/crypto.js，二维码依赖Kazuhiko Arase qrcode-generator（MIT，web/QRCODE-LICENSE.txt），https://github.com/kazuhikoarase/qrcode-generator 。当前实测eapi账号与音源接口可用，不能据上游xeapi默认方式断言本机eapi不可用。
+
+2026-11-03 PC 工具链改为系统 WinGet/pip 安装；保留的 curl 7.55.1 头文件及 COPYING 从 vendor 迁至 third_party/curl-7.55.1，哈希核对一致。Windows OpenSSH Server 现场检查显示运行中并监听 22；LAN SSH/SFTP 外部连接尚未实测。

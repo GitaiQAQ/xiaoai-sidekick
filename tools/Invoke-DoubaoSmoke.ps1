@@ -1,6 +1,8 @@
 param([string]$ProjectDir='C:\Users\gitai\Desktop\lx06-agent',
       [string]$CredentialsFile='', [switch]$TransportTest,[switch]$Realtime,[switch]$Session,[switch]$Responses,[switch]$Duplex,[switch]$Kws,[switch]$KwsWav,[switch]$Tone,[switch]$MakeAck,[int]$Seconds=30,[int]$KwsSeconds=60)
 $ErrorActionPreference='Stop'
+. (Join-Path $ProjectDir 'tools\Resolve-SystemTool.ps1')
+$python=Resolve-SystemTool 'python.exe'
 $binary=if($Duplex){'lx06-duplex-armhf'}elseif($Realtime){'lx06-library-probe-armhf'}else{'lx06-ark-client-armhf'}
 $service=if($Realtime -or $Duplex){'realtime'}else{'ark'}
 if($TransportTest){
@@ -24,7 +26,7 @@ if($TransportTest){
         $mode=if($Responses){'--responses'}else{'--stdin-config'}
     }
 }
-& (Join-Path $ProjectDir 'vendor\python-analysis\python.exe') (Join-Path $ProjectDir 'tools\native-library-elf.py') $binary
+& $python (Join-Path $ProjectDir 'tools\native-library-elf.py') $binary
 if($LASTEXITCODE -ne 0){throw 'ELF validation failed'}
 $file=Join-Path $ProjectDir ('build\'+$binary)
 $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()
