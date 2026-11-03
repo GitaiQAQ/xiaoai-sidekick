@@ -272,3 +272,5 @@
 168. 2026-11-03 Windows 工具链迁移：PowerShell 构建和分析脚本改为从系统 PATH 查找 Zig/Python；安装说明改用 WinGet 与 pip。curl 7.55.1 头文件及 COPYING 迁入 `third_party/curl-7.55.1/`，供 ARM 交叉编译使用。`tools/Resolve-SystemTool.ps1` 提供 Windows PATH 解析。工具迁移提交 `f81a277` 已并入统一分支 `7870749`。
 
 169. 2026-11-03 按用户选择将本机旧 `vendor/` 整体移出工作区至 `~/Library/Caches/xiaoai-sidekick/`，保留 2.2 GB TTS/ASR 模型与本机 Python/Zig 环境；工作区不再包含 `vendor/`。新增 `LX06_MODEL_CACHE` 跨平台路径解析，训练与标注工具从用户缓存读取语音模型。旧 curl 头文件副本也随缓存保留，构建改用仓库 `third_party/` 版本。
+
+170. 2026-11-03 按用户要求将 tools/ 下 14 个 PowerShell 入口迁移为 Bash：新增构建、工具解析、Rootfs 比较、公开输入获取、SSH/服务管理、冒烟、原生探针、音乐检查及 KWS 调优脚本；共用 SSH/JSON/SHA 辅助与 Linux askpass，移除旧 .ps1 入口并更新 README、tools/README 与上下文。静态审阅确认 Windows 目标通过 Git Bash 调用，远端文件按字节流传输并在脚本中做 SHA-256 校验；这是代码审阅结论，尚未在 Git Bash/Linux/macOS 执行，也未连接设备、下载输入或更改设备状态。用户报告已安装 Git Bash，未独立验证。推断：共享 Bash 实现可减少脚本源代码差异，但依赖版本、PATH、SSH 配置和各主机运行一致性仍未验证。
