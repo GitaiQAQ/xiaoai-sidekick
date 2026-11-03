@@ -20,6 +20,7 @@ struct lx_music_json {
  int (*integer)(void *);
  int64_t (*integer64)(void *);
  int (*array_length)(void *);
+ int (*object_length)(void *);
  void *(*index)(void *,int);
  int (*length)(void *);
  const char *(*string)(void *);
@@ -42,7 +43,7 @@ static int lx_music_init(void *lib){
 #define M(field,name) *(void **)(&mj.field)=dlsym(lib,name);if(!mj.field)return 1
  M(parse,"json_tokener_parse");M(get,"json_object_object_get_ex");M(type,"json_object_get_type");M(integer,"json_object_get_int");
  M(length,"json_object_get_string_len");M(string,"json_object_get_string");M(put,"json_object_put");M(object,"json_object_new_object");
- M(integer64,"json_object_get_int64");M(array_length,"json_object_array_length");M(index,"json_object_array_get_idx");
+ M(object_length,"json_object_object_length");M(integer64,"json_object_get_int64");M(array_length,"json_object_array_length");M(index,"json_object_array_get_idx");
  M(array,"json_object_new_array");M(append,"json_object_array_add");
  M(new_string,"json_object_new_string");M(new_int,"json_object_new_int");M(add,"json_object_object_add");M(encode,"json_object_to_json_string");
 #undef M
@@ -51,14 +52,20 @@ static int lx_music_init(void *lib){
 static int64_t lx_music_ms(void){struct timespec t;if(clock_gettime(CLOCK_MONOTONIC,&t))return -1;return (int64_t)t.tv_sec*1000+t.tv_nsec/1000000;}
 static int lx_music_ubus_object(const char *object,const char *method,const char *args,char *out,size_t cap){
  int fds[2],status=0,failed=0;pid_t pid;size_t used=0;int64_t until=lx_music_ms()+8000;
+ #ifdef LX_MUSIC_DEADLINE
+ int64_t deadline=LX_MUSIC_DEADLINE();if(deadline>0&&deadline<until)until=deadline;if(lx_music_ms()>=until)return 1;
+#endif
  if(pipe(fds))return 1;
  pid=fork();
  if(pid==0){
   int null=open("/dev/null",O_RDWR);dup2(fds[1],1);if(null>=0){dup2(null,0);dup2(null,2);}close(fds[0]);close(fds[1]);
-  execl("/bin/ubus","ubus","-t","1","call",object,method,args,(char *)NULL);_exit(127);
+  execl("/bin/ubus","ubus","-t",!strcmp(method,"player_play_music")?"5":"1","call",object,method,args,(char *)NULL);_exit(127);
  }
  close(fds[1]);if(pid<0){close(fds[0]);return 1;}
  while(1){
+#ifdef LX_MUSIC_WAIT_PUMP
+  if(!strcmp(method,"player_play_music"))LX_MUSIC_WAIT_PUMP();
+#endif
   struct pollfd p={fds[0],POLLIN,0};
   if(lx_music_ms()>=until){failed=1;break;}
   int got=poll(&p,1,50);if(got<0){if(errno==EINTR)continue;failed=1;break;}if(!got)continue;
@@ -134,11 +141,15 @@ static int lx_music_play_queue(const char **urls,const struct lx_music_track *tr
   mj.add(message,"payload",payload);mj.add(message,"play_mode",mj.new_string("SEQUENCE"));
   void *args=mj.object();mj.add(args,"music",mj.new_string(mj.encode(message)));mj.add(args,"media",mj.new_string("common"));
   int bad=lx_music_ubus("player_play_music",mj.encode(args),raw,sizeof(raw));mj.put(args);mj.put(message);
-  if(bad||!lx_music_reply_ok(raw))return 1;
+  if(bad||!lx_music_reply_ok(raw)){void *ack=mj.parse(raw);int code=-1;if(ack)lx_music_number(ack,"code",&code);printf("music_queue_ack failed=%d code=%d\n",bad,code);fflush(stdout);if(ack)mj.put(ack);return 1;}
  }
  if(count>chunk){char idx[64];snprintf(idx,sizeof(idx),"{\"index\":0,\"media\":\"common\"}");if(lx_music_ubus("player_play_index",idx,raw,sizeof(raw))||!lx_music_reply_ok(raw))return 1;}
  lx_music_queue_count=count;snprintf(lx_music_playlist,sizeof(lx_music_playlist),"%s",playlist);for(int i=0;i<count;i++)lx_music_queue[i]=tracks[i];
- for(int i=0;i<50;i++){if(!lx_music_state(state,sizeof(state),&status)&&status==1){snprintf(out,cap,"{\"ok\":true,\"status\":1,\"queue_total\":%d}",count);return 0;}usleep(100000);}
+ for(int i=0;i<50;i++){
+#ifdef LX_MUSIC_WAIT_PUMP
+ LX_MUSIC_WAIT_PUMP();
+#endif
+ if(!lx_music_state(state,sizeof(state),&status)&&status==1){void *actual=mj.parse(state),*id=NULL;int matches=actual&&mj.get(actual,"audio_id",&id)&&mj.type(id)==6&&!strcmp(mj.string(id),tracks[0].audio_id);if(actual)mj.put(actual);if(!matches){usleep(100000);continue;}snprintf(out,cap,"{\"ok\":true,\"status\":1,\"queue_total\":%d}",count);return 0;}usleep(100000);}
  snprintf(out,cap,"{\"ok\":false,\"error\":\"playback_not_confirmed\",\"status\":%d}",status);return 1;
 }
 static int lx_music_play_url(const char *url,char *out,size_t cap){const char *urls[1]={url};struct lx_music_track track={0};snprintf(track.audio_id,sizeof(track.audio_id),"lx06-direct-stream");snprintf(track.title,sizeof(track.title),"网络音频流");return lx_music_play_queue(urls,&track,1,"网络音频流",out,cap);}

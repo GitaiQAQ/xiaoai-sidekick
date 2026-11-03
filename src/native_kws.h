@@ -25,7 +25,7 @@
 #define LX_KWS_MIN_SPAN 40          /* 400 ms */
 #define LX_KWS_MAX_SPAN 250         /* 2.5 s */
 #define LX_KWS_MAX_FRAMES 250
-#define LX_KWS_PREROLL (LX_KWS_RATE * 3 / 10)   /* 300 ms */
+#define LX_KWS_PREROLL (LX_KWS_RATE * 2)   /* two seconds retained in memory */
 #ifndef LX_KWS_MIN_HITS
 #define LX_KWS_MIN_HITS 3           /* consecutive windows below threshold */
 #endif

@@ -9,7 +9,7 @@
 
    Fallback path: the factory "mico_record" PCM at 16 kHz mono, which still
    contains the speaker echo. Selected when the 8-channel PCM, libspeexdsp or
-   the AEC state is unavailable, so the client keeps working on a plain image.
+   the AEC state is unavailable, for local diagnostics and wake detection. Cloud sessions reject this path.
 
    Nothing here writes to the vendor processes; the 8-channel PCM is a dsnoop,
    so the factory wake stack keeps reading it. */
@@ -201,5 +201,10 @@ static int lx_capture_open(struct lx_capture *c,const struct lx_capture_alsa *op
  if(lx_capture_init(c,ops,NULL,plain)){ops->close(plain);return -1;}
  puts("capture=plain pcm=mico_record");
  return 0;
+}
+/* Plain capture remains available only for local diagnostics and wake detection.
+   Every cloud upload checks this predicate, including buffered preroll. */
+static int lx_capture_cloud_ready(const struct lx_capture *c) {
+ return c&&c->aec&&!c->failed&&c->echo&&c->pp&&c->ecancel&&c->prun;
 }
 #endif

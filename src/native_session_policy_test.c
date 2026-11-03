@@ -20,5 +20,7 @@ int main(void) {
  CHECK(p.turns==2);why=lx_turn_timeout(&p,38200,6000);
  CHECK(why&&!strcmp(why,"followup_timeout"));
  lx_turn_audio(&p);lx_turn_done(&p,40000);CHECK(lx_turn_played(&p,41000,1,0)==-1);
+ lx_turn_init(&p,0);CHECK(lx_turn_audio_mode(&p,1)==0);CHECK(p.uplink&&p.answer_active);
+ CHECK(!lx_turn_timeout(&p,10000,6000));lx_turn_done(&p,10000);CHECK(lx_turn_played(&p,10200,1,8000)==1);CHECK(p.uplink&&p.turns==1);
  printf("session_policy checks=%d pass=1\n",n);return 0;
 }

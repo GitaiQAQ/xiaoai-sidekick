@@ -18,6 +18,10 @@ static int lx_turn_audio(struct lx_turn_policy *p) {
     p->uplink=0;p->answer_active=1;p->answer_ended=0;p->followup_until=0;
     return mute;
 }
+static int lx_turn_audio_mode(struct lx_turn_policy *p,int full_duplex) {
+    if(!full_duplex)return lx_turn_audio(p);
+    p->uplink=1;p->answer_active=1;p->answer_ended=0;p->followup_until=0;return 0;
+}
 static void lx_turn_done(struct lx_turn_policy *p,int64_t now) {
     if(p->answer_active){p->answer_ended=1;p->answer_end_at=now;}
 }

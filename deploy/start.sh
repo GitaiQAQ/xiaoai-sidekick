@@ -15,14 +15,14 @@ mkfifo -m 600 "$FIFO"
 # POSIX sh gives background jobs /dev/null as stdin, so read the key in the
 # foreground and hand it to the FIFO from a writer that needs no stdin.
 KEY=$(cat)
-if [ -z "${KEY:-}" ]; then echo "empty key on stdin" >&2; rm -f "$FIFO"; exit 2; fi
-printf '%s\n' "$KEY" > "$FIFO" &
+(printf '%s\n' lx06-keywriter > /proc/self/comm; printf '%s\n' "$KEY" > "$FIFO") &
 WRITER=$!
 unset KEY
 echo "$WRITER" > "$DIR/writer.pid"
-export LX_SESSION_MAX="${LX_SESSION_MAX:-60}"
-export LX_FOLLOWUP="${LX_FOLLOWUP:-8}"
-export LX_NO_SPEECH="${LX_NO_SPEECH:-6}"
+export LX_SESSION_MAX="${LX_SESSION_MAX:-1800}"
+export LX_FOLLOWUP="${LX_FOLLOWUP:-20}"
+export LX_NO_SPEECH="${LX_NO_SPEECH:-20}"
+export LX_NO_RESPONSE="${LX_NO_RESPONSE:-20}"
 /lib/ld-linux-armhf.so.3 "$BIN" --kws "$SECONDS_ARG" --daemon "$DIR/lx06.pid" < "$FIFO" > "$LOG" 2>&1
 sleep 1
 PID=$(cat "$DIR/lx06.pid" 2>/dev/null || true)

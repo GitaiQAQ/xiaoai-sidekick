@@ -11,6 +11,12 @@
 #include <netinet/in.h>
 #include <ctype.h>
 #include <dirent.h>
+static void music_wait_pump(void);
+#define LX_MUSIC_WAIT_PUMP music_wait_pump
+#include <stdint.h>
+static int64_t web_action_deadline;
+#define LX_MUSIC_DEADLINE() web_action_deadline
+#define LX_NC_DEADLINE() web_action_deadline
 #include "native_music.h"
 #include "native_netease.h"
 #include "native_tools.h"
@@ -28,7 +34,8 @@ struct request {char method[8],path[160],host[100],origin[160],token[64];size_t 
 struct event {char action[32];int ok;int64_t at;};
 static struct event events[12];static unsigned event_count;
 static char command_id[64];
-static int local_tool_request;
+static int (*web_trim)(size_t);
+static int local_tool_request;static int music_wait_socket=-1,music_wait_active;
 #define TOOL_SOCKET "/data/lx06-agent/control.sock"
 static void stop_web(int sig){(void)sig;web_stop=1;}
 static void add_s(void *o,const char *k,const char *s){mj.add(o,k,mj.new_string(s));}
@@ -115,7 +122,7 @@ static int agent_pid(void){
  return kill((pid_t)pid,0)==0?(int)pid:0;
 }
 static int start_agent(int once){
- if(agent_pid())return once?1:0;if(!voice_key[0]||access(AGENT,X_OK))return 1;
+ if(agent_pid())return once?1:0;if(access(AGENT,X_OK))return 1;
  int fds[2];if(pipe(fds))return 1;pid_t p=fork();
  if(p==0){
   int log=open("/data/lx06-agent/client.log",O_WRONLY|O_CREAT|O_APPEND,0600);
@@ -181,13 +188,16 @@ static void event_reply(int fd){
  void *o=build_state();const char *json=mj.encode(o);size_t n=strlen(json)+100;char *frame=malloc(n);if(!frame){mj.put(o);error_reply(fd,503,"allocation_failed");return;}
  int len=snprintf(frame,n,"retry: 4000\nevent: state\ndata: %s\n\n",json);respond(fd,200,"text/event-stream; charset=utf-8",frame,(size_t)len);free(frame);mj.put(o);
 }
+#include "native_capabilities.h"
+
 /* Every capability runs through this one dispatcher; the HTTP action endpoint,
    the model-tool endpoint and the RPC wrapper all share it. */
 static void *action_execute(void *obj,const char **action_out,int *code_out,const char **err_out){
  void *value=NULL,*out=NULL;const char *action=NULL;char reply[1024]="{\"ok\":false}";int rc=1,code=200;
  *code_out=200;*err_out="invalid_action";*action_out=NULL;
  if(!obj||mj.type(obj)!=4||!mj.get(obj,"action",&value)||mj.type(value)!=6||(size_t)mj.length(value)!=strlen(mj.string(value)))return NULL;
- action=mj.string(value);*action_out=action;
+ action=mj.string(value);*action_out=action;web_action_deadline=lx_music_ms()+20000;
+ out=cap_execute(action,obj);if(out){add_s(out,"action",action);int ok=0;lx_music_number(out,"ok",&ok);audit(action,ok);return out;}
  if(!strncmp(action,"netease_",8)) {
   if(!strcmp(action,"netease_login"))out=nc_qr_start();
   else if(!strcmp(action,"netease_check"))out=nc_qr_check();
@@ -197,12 +207,20 @@ static void *action_execute(void *obj,const char **action_out,int *code_out,cons
    const char *q=nc_string(obj,"query");if(q&&*q&&strlen(q)<=256)out=nc_search(q);
   }else if(!strcmp(action,"netease_charts"))out=nc_charts();
   else if(!strcmp(action,"netease_playlists")){if(!nc.authenticated&&nc.music_u[0])nc_refresh();out=nc_user_playlists();}
-  else if(!strcmp(action,"netease_chart_tracks")){char id[32];if(nc_id(obj,"id",id))out=nc_chart_tracks(id);}
+  else if(!strcmp(action,"netease_chart_tracks")){char id[32];int offset=0,limit=20;void *v=NULL;
+   if(local_tool_request&&((mj.get(obj,"offset",&v)&&!cap_number(obj,"offset",&offset))||(mj.get(obj,"limit",&v)&&!cap_number(obj,"limit",&limit))||offset<0||offset>1000000||limit<1||limit>20)){*code_out=400;*err_out="invalid_pagination";return NULL;}
+   if(nc_id(obj,"id",id))out=nc_chart_tracks(id);
+   if(out&&local_tool_request){void *items=NULL;if(mj.get(out,"items",&items)&&mj.type(items)==5){int total=mj.array_length(items);void *page=mj.array();for(int i=offset;i<total&&i<offset+limit;i++)mj.append(page,mj.parse(mj.encode(mj.index(items,i))));mj.add(out,"items",page);add_i(out,"total",total);add_i(out,"offset",offset);add_i(out,"limit",limit);add_i(out,"has_more",offset+limit<total);}}
+  }
   else if(!strcmp(action,"netease_chart_play")||(!strcmp(action,"netease_chart_prepare")&&local_tool_request)||!strcmp(action,"netease_playlist_play")||(!strcmp(action,"netease_playlist_prepare")&&local_tool_request)){char id[32];const char *q=nc_string(obj,"quality");if(!q)q="exhigh";if(nc_id(obj,"id",id)&&(!strcmp(q,"standard")||!strcmp(q,"exhigh")||!strcmp(q,"lossless"))){if(!nc.authenticated&&nc.music_u[0])nc_refresh();nc_defer_play=!strcmp(action,"netease_chart_prepare")||!strcmp(action,"netease_playlist_prepare");out=nc_play_chart(id,q);nc_defer_play=0;}}
   else if(!strcmp(action,"netease_commit")&&local_tool_request){
    const char *ticket=nc_string(obj,"ticket");int ok=0;char result[1024];
-   if(ticket&&*ticket&&!strcmp(ticket,nc_pending_ticket)&&lx_music_ms()<nc_pending_until){if(nc_pending_count>0)ok=!lx_music_play_queue(nc_pending_urlptr,nc_pending_queue,nc_pending_count,nc_pending_playlist,result,sizeof(result));else{const char *urls[1]={nc_pending_url};ok=!lx_music_play_queue(urls,&nc_pending_track,1,nc_pending_track.title[0]?nc_pending_track.title:"网易云音乐",result,sizeof(result));}nc_pending_ticket[0]=nc_pending_url[0]=0;nc_pending_count=0;}
-   out=mj.object();add_i(out,"ok",ok);if(!ok)add_s(out,"error","pending_playback_not_confirmed");
+   int present=nc_pending_ticket[0]!=0,matched=ticket&&*ticket&&!strcmp(ticket,nc_pending_ticket),expired=lx_music_ms()>=nc_pending_until;
+   const char *failure=!present?"pending_ticket_missing":!matched?"pending_ticket_mismatch":expired?"pending_ticket_expired":"playback_not_confirmed";
+   printf("music_commit_check present=%d matched=%d expired=%d url_len=%zu count=%d\n",present,matched,expired,strlen(nc_pending_url),nc_pending_count);fflush(stdout);
+   if(present&&matched&&!expired){if(nc_pending_count>0)ok=!lx_music_play_queue(nc_pending_urlptr,nc_pending_queue,nc_pending_count,nc_pending_playlist,result,sizeof(result));else{const char *urls[1]={nc_pending_url};ok=!lx_music_play_queue(urls,&nc_pending_track,1,nc_pending_track.title[0]?nc_pending_track.title:"网易云音乐",result,sizeof(result));}nc_pending_ticket[0]=nc_pending_url[0]=0;nc_pending_count=0;}
+   out=mj.object();add_i(out,"ok",ok);if(!ok)add_s(out,"error",failure);
+
   }else if(!strcmp(action,"netease_play")||(!strcmp(action,"netease_prepare")&&local_tool_request)) {
    char id[32];const char *q=nc_string(obj,"quality");if(!q)q="exhigh";
    if(nc_id(obj,"id",id)&&(!strcmp(q,"standard")||!strcmp(q,"exhigh")||!strcmp(q,"lossless"))){if(!nc.authenticated&&nc.music_u[0])nc_refresh();nc_defer_play=!strcmp(action,"netease_prepare");out=nc_play(id,q,nc_string(obj,"title"),nc_string(obj,"artist"));nc_defer_play=0;}
@@ -213,11 +231,7 @@ static void *action_execute(void *obj,const char **action_out,int *code_out,cons
  if(!strcmp(action,"voice_start")||!strcmp(action,"voice_listen")){rc=start_agent(!strcmp(action,"voice_listen"));if(rc)code=409;}
  else if(!strcmp(action,"voice_stop")){rc=stop_agent();if(rc)code=409;}
  else if(!strcmp(action,"music_pause")){nc_pending_ticket[0]=nc_pending_url[0]=0;nc_pending_count=0;rc=lx_music_dispatch("{\"op\":\"pause\"}",reply,sizeof(reply));}
- else if(!strcmp(action,"music_status")){
-  char raw[32768];int status=-1;if(!lx_music_state(raw,sizeof(raw),NULL)){void *state=mj.parse(raw);if(state){lx_music_number(state,"status",&status);mj.put(state);}}
-  out=mj.object();add_i(out,"ok",status>=0);add_i(out,"status",status);add_s(out,"action",action);if(status<0)add_s(out,"error","state_unavailable");
-  audit(action,status>=0);return out;
- }
+ else if(!strcmp(action,"music_status")){out=cap_music_snapshot();if(!out)out=cap_error("state_unavailable");add_s(out,"action",action);int ok=0;lx_music_number(out,"ok",&ok);audit(action,ok);return out;}
  else if(!strcmp(action,"music_next"))rc=lx_music_dispatch("{\"op\":\"next\"}",reply,sizeof(reply));
  else if(!strcmp(action,"music_previous"))rc=lx_music_dispatch("{\"op\":\"previous\"}",reply,sizeof(reply));
  else if(!strcmp(action,"music_resume"))rc=lx_music_dispatch("{\"op\":\"resume\"}",reply,sizeof(reply));
@@ -242,7 +256,8 @@ static void *action_execute(void *obj,const char **action_out,int *code_out,cons
   rc=0;
  }else{*code_out=400;*err_out="unknown_action";return NULL;}
  audit(action,!rc);if(rc&&code==200)code=409;
- out=mj.object();add_i(out,"ok",!rc);add_s(out,"action",action);if(rc)add_s(out,"error","operation_not_confirmed");
+ out=mj.object();add_i(out,"ok",!rc);add_s(out,"action",action);if(!rc&&!strcmp(action,"volume")){int actual=-1;cap_number(obj,"value",&actual);add_i(out,"volume",actual);}
+ if(rc)add_s(out,"error","operation_not_confirmed");
  *code_out=code;return out;
 }
 static void action_reply(int fd,const char *body){
@@ -252,27 +267,30 @@ static void action_reply(int fd,const char *body){
  json_reply(fd,200,out);
 }
 static void tools_reply(int fd){
- char catalog[8192];int n=lx_tools_json(LX_TOOL_VOICE,catalog,sizeof(catalog));
+ char catalog[32768];int n=lx_tools_json(LX_TOOL_VOICE,catalog,sizeof(catalog));
  if(n<0){error_reply(fd,503,"tool_catalog_too_large");return;}
  void *arr=mj.parse(catalog);if(!arr){error_reply(fd,503,"tool_catalog_invalid");return;}
- void *o=mj.object();add_i(o,"ok",1);add_i(o,"version",1);mj.add(o,"tools",arr);json_reply(fd,200,o);
+ void *o=mj.object();add_i(o,"ok",1);add_i(o,"version",2);mj.add(o,"tools",arr);json_reply(fd,200,o);
 }
 /* Local-only: the voice client forwards model tool calls here. Arguments are
    the provider JSON string; unknown tools and oversized arguments are refused. */
 static void tool_reply(int fd,const char *body){
+ cap_clear_errors();
  void *o=mj.parse(body),*nv=NULL,*av=NULL,*args=NULL,*result=NULL;const char *name=NULL,*err=NULL;int code=200;
- if(!o||mj.type(o)!=4||!mj.get(o,"name",&nv)||mj.type(nv)!=6||strlen(mj.string(nv))>=64){if(o)mj.put(o);error_reply(fd,400,"invalid_tool_request");return;}
+ if(!o||mj.type(o)!=4||!mj.get(o,"name",&nv)||mj.type(nv)!=6||(size_t)mj.length(nv)!=strlen(mj.string(nv))||strlen(mj.string(nv))>=64){if(o)mj.put(o);error_reply(fd,400,"invalid_tool_request");return;}
  name=mj.string(nv);
  char tool_name[64];snprintf(tool_name,sizeof(tool_name),"%s",name);name=tool_name;
  if(mj.get(o,"arguments",&av)){
   if(mj.type(av)==6){const char *s=mj.string(av);if((size_t)mj.length(av)!=strlen(s)||strlen(s)>3000){mj.put(o);error_reply(fd,400,"invalid_tool_arguments");return;}args=mj.parse(s);}
   else if(mj.type(av)==4)args=mj.parse(mj.encode(av));
+  if(!args){mj.put(o);error_reply(fd,400,"invalid_tool_arguments");return;}
  }
  mj.put(o);
  if(!args)args=mj.object();
  if(mj.type(args)!=4){mj.put(args);error_reply(fd,400,"invalid_tool_arguments");return;}
  const struct lx_tool_def *t=lx_tool_find(name,LX_TOOL_VOICE);
  if(!t){mj.put(args);void *r=mj.object();add_i(r,"ok",0);add_s(r,"error","unknown_tool");json_reply(fd,200,r);return;}
+ if(!cap_tool_arguments_valid(t,args)){mj.put(args);void *r=cap_error("invalid_tool_arguments");json_reply(fd,200,r);return;}
  add_s(args,"action",t->action);
  const char *used=NULL;result=action_execute(args,&used,&code,&err);mj.put(args);
  if(!result){void *r=mj.object();add_i(r,"ok",0);add_s(r,"error",err?err:"tool_failed");json_reply(fd,200,r);return;}
@@ -280,6 +298,7 @@ static void tool_reply(int fd,const char *body){
 }
 static void command_reply(int fd,const char *body){
  static const char *map[][2]={
+ {"device.status","speaker_status"},{"device.volume.get","volume_get"},{"device.lamp.status","lamp_status"},{"device.lamp.feedback","lamp_feedback_set"},{"music.seek","music_seek"},{"music.mode.get","music_mode_get"},{"music.mode.set","music_mode_set"},{"music.timer.status","sleep_timer_get"},{"sound_effect.status","sound_effect_get"},{"alarm.volume.get","alarm_volume_get"},{"alarm.volume.set","alarm_volume_set"},{"alarms.list","alarm_list"},{"alarms.create","alarm_create"},{"alarms.enabled.set","alarm_enabled_set"},{"alarms.delete","alarm_delete"},{"bluetooth.status","bluetooth_status"},{"mesh.status","mesh_status"},{"night_mode.status","night_mode_status"},{"line_in.status","line_in_status"},
  {"voice.start","voice_start"},{"voice.listen","voice_listen"},{"voice.stop","voice_stop"},{"music.pause","music_pause"},{"music.resume","music_resume"},{"music.stop","music_stop"},{"music.status","music_status"},{"music.next","music_next"},{"music.previous","music_previous"},{"music.stream.play","music_play"},{"device.volume.set","volume"},{"device.lamp.clear","lamp_clear"},
   {"accounts.netease.login.start","netease_login"},{"accounts.netease.login.check","netease_check"},{"accounts.netease.refresh","netease_refresh"},{"accounts.netease.logout","netease_logout"},{"music.netease.search","netease_search"},{"music.netease.play","netease_play"},{"music.netease.charts","netease_charts"},{"music.netease.playlists","netease_playlists"},{"music.netease.chart.tracks","netease_chart_tracks"},{"music.netease.playlist.tracks","netease_chart_tracks"},{"music.netease.chart.play","netease_chart_play"},{"music.netease.playlist.play","netease_playlist_play"},{"music.netease.chart.prepare","netease_chart_prepare"},{"music.netease.playlist.prepare","netease_playlist_prepare"},{"music.netease.prepare","netease_prepare"},{"music.netease.commit","netease_commit"}};
  void *o=mj.parse(body),*params=NULL;int version=0;const char *method=o?nc_string(o,"method"):NULL,*id=o?nc_string(o,"id"):NULL,*action=NULL;
@@ -287,7 +306,7 @@ static void command_reply(int fd,const char *body){
  for(const char *p=id;*p;p++)if(!isalnum((unsigned char)*p)&&*p!='-'&&*p!='_'&&*p!='.'&&*p!=':'){mj.put(o);error_reply(fd,400,"invalid_request_id");return;}
  snprintf(command_id,sizeof(command_id),"%s",id);
  for(unsigned i=0;i<sizeof(map)/sizeof(map[0]);i++)if(!strcmp(method,map[i][0]))action=map[i][1];
- if(local_tool_request&&strncmp(method,"music.",6)){mj.put(o);error_reply(fd,403,"tool_method_rejected");return;}
+ if(local_tool_request&&(!action||(!lx_tool_action_allowed(action,LX_TOOL_VOICE)&&strcmp(action,"netease_commit")))){mj.put(o);error_reply(fd,403,"tool_method_rejected");return;}
  if(!action||!mj.get(o,"params",&params)||mj.type(params)!=4){mj.put(o);error_reply(fd,400,"unknown_method_or_params");return;}
  void *request=mj.parse(mj.encode(params));add_s(request,"action",action);action_reply(fd,mj.encode(request));mj.put(request);mj.put(o);
 }
@@ -299,6 +318,7 @@ static void static_reply(int fd,const char *path){
  size_t used=0;while(used<n){ssize_t k=read(f,data+used,n-used);if(k<=0)break;used+=(size_t)k;}close(f);if(used==n)respond(fd,200,type,data,n);else error_reply(fd,503,"asset_read_failed");free(data);
 }
 static void handle_connection(int fd){
+ if(!music_wait_active)web_action_deadline=0;
  char buffer[HEADER_MAX+BODY_MAX+1];size_t used=0,head=0;int64_t until=lx_music_ms()+3000;
  struct timeval timeout={1,0};setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof(timeout));setsockopt(fd,SOL_SOCKET,SO_SNDTIMEO,&timeout,sizeof(timeout));
  while(!head&&used<HEADER_MAX&&!web_stop&&lx_music_ms()<until){ssize_t n=recv(fd,buffer+used,HEADER_MAX-used,0);if(n<=0)break;used+=(size_t)n;buffer[used]=0;char *end=strstr(buffer,"\r\n\r\n");if(end)head=(size_t)(end-buffer)+4;}
@@ -311,6 +331,7 @@ static void handle_connection(int fd){
  snprintf(origin,sizeof(origin),"http://%s",host);
  }
  while(used<head+r.length&&lx_music_ms()<until){ssize_t n=recv(fd,buffer+used,head+r.length-used,0);if(n<=0)break;used+=(size_t)n;}if(used!=head+r.length){error_reply(fd,400,"incomplete_body");return;}buffer[used]=0;
+ if(music_wait_active&&(r.length||strncmp(r.path,"/r/",3)||(strcmp(r.method,"HEAD")&&strcmp(r.method,"GET")))){error_reply(fd,503,"playback_start_in_progress");return;}
  if(!local_tool_request&&!strcmp(r.method,"HEAD")&&!r.length&&!strncmp(r.path,"/r/",3)){stream_redirect(fd,r.path);return;}
  if(!local_tool_request&&!strcmp(r.method,"GET")&&!r.length){if(!strncmp(r.path,"/r/",3)){stream_redirect(fd,r.path);return;}if(!strcmp(r.path,"/api/state")||!strcmp(r.path,"/api/v1/state"))state_reply(fd);else if(!strcmp(r.path,"/api/v1/events"))event_reply(fd);else static_reply(fd,r.path);return;}
  if(!strcmp(r.method,"POST")&&(!strcmp(r.path,"/api/action")||!strcmp(r.path,"/api/v1/command"))){
@@ -333,6 +354,18 @@ static int parser_test(void){
  for(unsigned i=0;i<sizeof(bad)/sizeof(bad[0]);i++){if(!parse_request(bad[i],strlen(bad[i]),&r))return 1;checks++;}
  printf("web_parser checks=%d pass=1\n",checks);return 0;
 }
+/* Playback opens /r/ on this same server. Service only its loopback redirects
+   while verifying playback; do not accept reentrant tool or mutation calls. */
+static void music_wait_pump(void){
+ if(music_wait_socket<0)return;
+ struct pollfd p={music_wait_socket,POLLIN,0};if(poll(&p,1,0)<=0)return;
+ int fd=accept(music_wait_socket,NULL,NULL);if(fd<0)return;
+ fcntl(fd,F_SETFD,FD_CLOEXEC);
+ int saved=local_tool_request;local_tool_request=0;music_wait_active=1;
+ if(peer_is_loopback(fd))handle_connection(fd);else error_reply(fd,503,"playback_start_in_progress");
+ music_wait_active=0;local_tool_request=saved;close(fd);
+}
+
 int main(int argc,char **argv){
  if(prctl(PR_SET_DUMPABLE,0L,0L,0L,0L)||prctl(PR_GET_DUMPABLE,0L,0L,0L,0L)!=0)return 1;
  if(argc==2&&!strcmp(argv[1],"--self-test"))return parser_test();
@@ -349,6 +382,7 @@ int main(int argc,char **argv){
  if(daemon){int devnull=open("/dev/null",O_RDONLY);if(devnull>=0){dup2(devnull,0);if(devnull>2)close(devnull);}}
  int random=open("/dev/urandom",O_RDONLY);unsigned char nonce[16];if(random<0||read(random,nonce,sizeof(nonce))!=(ssize_t)sizeof(nonce))return 1;close(random);for(unsigned i=0;i<16;i++)snprintf(csrf+i*2,3,"%02x",nonce[i]);
  void *json=dlopen("libjson-c.so.2",RTLD_NOW|RTLD_LOCAL);if(!json||lx_music_init(json)||nc_init())return 1;
+ *(void **)(&web_trim)=dlsym(RTLD_DEFAULT,"malloc_trim");
  int sock=socket(AF_INET,SOCK_STREAM,0),one=1;struct sockaddr_in addr={0};if(sock<0)return 1;fcntl(sock,F_SETFD,FD_CLOEXEC);setsockopt(sock,SOL_SOCKET,SO_REUSEADDR,&one,sizeof(one));
  addr.sin_family=AF_INET;addr.sin_port=htons(web_port);addr.sin_addr.s_addr=htonl(INADDR_ANY);if(bind(sock,(struct sockaddr *)&addr,sizeof(addr))||listen(sock,8)){close(sock);return 1;}
  int local_sock=socket(AF_UNIX,SOCK_STREAM,0);struct sockaddr_un un={0};un.sun_family=AF_UNIX;snprintf(un.sun_path,sizeof(un.sun_path),"%s",TOOL_SOCKET);
@@ -356,7 +390,7 @@ int main(int argc,char **argv){
  if(local_sock<0)return 1;fcntl(local_sock,F_SETFD,FD_CLOEXEC);unlink(TOOL_SOCKET);
  mode_t oldmask=umask(077);int local_bad=bind(local_sock,(struct sockaddr *)&un,sizeof(un))||chmod(TOOL_SOCKET,0600)||listen(local_sock,4);umask(oldmask);if(local_bad){close(local_sock);close(sock);return 1;}
  if(daemon){pid_t p=fork();if(p<0)return 1;if(p>0){close(sock);return 0;}if(setsid()<0)return 1;umask(077);FILE *f=fopen(PIDFILE,"w");if(!f)return 1;fprintf(f,"%d\n",(int)getpid());fclose(f);}
- started=lx_music_ms();printf("web_ready port=%u credentials_loaded=%d\n",web_port,voice_key[0]!=0);fflush(stdout);
- while(!web_stop){struct pollfd p[2]={{sock,POLLIN,0},{local_sock,POLLIN,0}};if(poll(p,2,250)<=0)continue;for(int i=0;i<2&&!web_stop;i++){if(!(p[i].revents&POLLIN))continue;int fd=accept(p[i].fd,NULL,NULL);if(fd<0)continue;fcntl(fd,F_SETFD,FD_CLOEXEC);local_tool_request=i==1;handle_connection(fd);local_tool_request=0;close(fd);}}
+ music_wait_socket=sock;started=lx_music_ms();printf("web_ready port=%u credentials_loaded=%d\n",web_port,voice_key[0]!=0);fflush(stdout);
+ while(!web_stop){struct pollfd p[2]={{sock,POLLIN,0},{local_sock,POLLIN,0}};if(poll(p,2,250)<=0)continue;for(int i=0;i<2&&!web_stop;i++){if(!(p[i].revents&POLLIN))continue;int fd=accept(p[i].fd,NULL,NULL);if(fd<0)continue;fcntl(fd,F_SETFD,FD_CLOEXEC);local_tool_request=i==1;handle_connection(fd);local_tool_request=0;close(fd);if(web_trim)web_trim(0);}}
  close(local_sock);unlink(TOOL_SOCKET);close(sock);if(daemon)unlink(PIDFILE);volatile char *wipe=voice_key;for(size_t i=0;i<sizeof(voice_key);i++)wipe[i]=0;dlclose(json);return 0;
 }
