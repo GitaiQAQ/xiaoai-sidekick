@@ -432,7 +432,13 @@ static long agent_capture(void *c,short *pcm,int frames){
     if(!lx_capture_cloud_ready(h->capture))return -1;
     return lx_handoff.active?lx_handoff_read(pcm,frames):lx_capture_read(h->capture,pcm,frames);
 }
-static int agent_recover(void *c,long error){struct agent_host_ctx *h=c;return lx_handoff.active?-1:lx_capture_recover(h->capture,error);}
+static int agent_recover(void *c,long error){
+    struct agent_host_ctx *h=c;
+    /* The handoff worker owns the PCM and retries recovery itself. A transient
+       read error here must not end the session. */
+    if(lx_handoff.active)return 0;
+    return lx_capture_recover(h->capture,error);
+}
 static void agent_play(void *c,const char *b64){struct agent_host_ctx *h=c;play_delta(h->w,b64);}
 static int agent_idle(void *c){struct agent_host_ctx *h=c;return playback_idle(h->w->ring);}
 static void agent_led(void *c,int state){struct agent_host_ctx *h=c;if(h->led_owned)feedback_led(state);}
@@ -723,12 +729,16 @@ static int run_session(struct curl_api *a,void *crypto,void *json,const char *ke
     if(!w.random_bytes||!w.b64_encode||!w.b64_decode||!w.json_parse||!w.json_get||
        !w.json_string||!w.json_type||!w.json_put){puts("symbol lookup failed");return 1;}
 
+    int64_t open_started=now_ms();
     if(g_alsa.open(&playback,"default",0,0)){puts("playback open failed");return 1;}
+    int64_t open_done=now_ms();
     if(g_alsa.set_params(playback,2,3,1,RATE_OUT,1,100000)) {
         puts("alsa playback set_params failed");
         g_alsa.close(playback);
         return 1;
     }
+    printf("playback_open_ms=%lld playback_params_ms=%lld\n",
+        (long long)(open_done-open_started),(long long)(now_ms()-open_done));fflush(stdout);
     g_play=playback;
     ring.cap=RATE_OUT*2*60;ring.data=malloc(ring.cap);
     if(!ring.data){g_alsa.drain(playback);g_alsa.close(playback);return 1;}
@@ -740,6 +750,9 @@ static int run_session(struct curl_api *a,void *crypto,void *json,const char *ke
     }
     started=1;
     if(mode==MODE_KWS)wake_ding(&ring);
+    /* Everything above is local device setup; the remainder of setup_to_tls
+       is curl/OpenSSL initialization and the handshake. */
+    printf("session_prep_ms=%lld\n",(long long)(now_ms()-w.setup_ms));fflush(stdout);
     publish_state("connecting");
     stage=1;
     w.a=a;w.c=a->init();w.socket=-1;
@@ -838,7 +851,19 @@ static int run_session(struct curl_api *a,void *crypto,void *json,const char *ke
             else printf("tool_catalog=unavailable\n");
             fflush(stdout);
         }
-        tj.add(session,"instructions",tj.str("你是豆包，用用户的语言简短回答。需要操作音箱时调用对应工具；工具未成功，不要声称成功。"));
+        {
+            /* Compose, never replace, the mode-specific instruction. The plain
+               session must keep its no-unsolicited-response rule. */
+            const char *base=wake
+                ?"用户刚叫了你的名字豆包，请直接回答随后说的话；听不清时简短询问。"
+                :"只有用户明确叫你豆包、或说你好豆包时才回应；其他对话保持沉默。";
+            char instructions[1024];
+            snprintf(instructions,sizeof(instructions),
+                "%s你是豆包，用用户的语言简短回答。需要操作音箱时调用对应工具；工具未成功，不要声称成功。"
+                "当用户说闭嘴、停止、别说了、结束、不用了或表示不想继续时，立即调用 session_end 工具结束会话，不要用语音回复。",
+                base);
+            tj.add(session,"instructions",tj.str(instructions));
+        }
         const char *create=tj.encode(config);size_t len=strlen(create);
         w.deadline=now_ms()+5000;
         int bad=ws_send_frame(&w,1,(const unsigned char *)create,len);tj.put(config);if(bad)goto cleanup;

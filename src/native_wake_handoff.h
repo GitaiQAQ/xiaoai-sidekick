@@ -7,6 +7,7 @@ struct lx_wake_handoff {
  pthread_mutex_t lock;pthread_cond_t ready;pthread_t thread;
  struct lx_capture *capture;short *pcm;
  unsigned head,tail,used,dropped;int active,stop,error,discard;
+ unsigned recoveries,recover_fail;
  unsigned long long next_emit_ns;
 };
 static struct lx_wake_handoff lx_handoff;
@@ -15,11 +16,20 @@ static void *lx_handoff_worker(void *unused) {
  for(;;){
   pthread_mutex_lock(&lx_handoff.lock);int stop=lx_handoff.stop;pthread_mutex_unlock(&lx_handoff.lock);if(stop)break;
   long n=lx_capture_read(lx_handoff.capture,pcm,320);
-  if(n<0){if(lx_capture_recover(lx_handoff.capture,n)>=0)continue;pthread_mutex_lock(&lx_handoff.lock);lx_handoff.error=1;pthread_cond_broadcast(&lx_handoff.ready);pthread_mutex_unlock(&lx_handoff.lock);break;}
+  /* A transient device error must not end the voice session: retry recovery
+     for the life of the handoff and let the session's own idle timers decide
+     when to stop. The previous behavior turned one failed recovery into a
+     permanent capture_error. */
+  if(n<0){
+   if(lx_capture_recover(lx_handoff.capture,n)>=0){lx_handoff.recoveries++;continue;}
+   lx_handoff.recover_fail++;usleep(20000);continue;
+  }
   pthread_mutex_lock(&lx_handoff.lock);
   if(lx_handoff.discard){pthread_mutex_unlock(&lx_handoff.lock);continue;}
   for(long i=0;i<n;i++){
-   if(lx_handoff.used==LX_HANDOFF_CAP){lx_handoff.dropped++;continue;}
+   /* Keep the newest audio when the reader falls behind: stale samples are
+      worse than a gap for speech recognition. */
+   if(lx_handoff.used==LX_HANDOFF_CAP){lx_handoff.tail=(lx_handoff.tail+1)%LX_HANDOFF_CAP;lx_handoff.used--;lx_handoff.dropped++;}
    lx_handoff.pcm[lx_handoff.head]=pcm[i];lx_handoff.head=(lx_handoff.head+1)%LX_HANDOFF_CAP;lx_handoff.used++;
   }
   pthread_cond_signal(&lx_handoff.ready);pthread_mutex_unlock(&lx_handoff.lock);
@@ -30,7 +40,7 @@ static void lx_handoff_end(void) {
  if(!lx_handoff.active)return;
  pthread_mutex_lock(&lx_handoff.lock);lx_handoff.stop=1;pthread_cond_broadcast(&lx_handoff.ready);pthread_mutex_unlock(&lx_handoff.lock);
  pthread_join(lx_handoff.thread,NULL);
- printf("wake_handoff_end dropped_samples=%u\n",lx_handoff.dropped);fflush(stdout);
+ printf("wake_handoff_end dropped_samples=%u recoveries=%u recover_fail=%u\n",lx_handoff.dropped,lx_handoff.recoveries,lx_handoff.recover_fail);fflush(stdout);
  pthread_cond_destroy(&lx_handoff.ready);pthread_mutex_destroy(&lx_handoff.lock);free(lx_handoff.pcm);memset(&lx_handoff,0,sizeof(lx_handoff));
 }
 static void lx_handoff_discard(void) {
@@ -53,7 +63,7 @@ static long lx_handoff_read(short *pcm,int n) {
   struct timespec until;clock_gettime(CLOCK_REALTIME,&until);until.tv_nsec+=100000000L;if(until.tv_nsec>=1000000000L){until.tv_sec++;until.tv_nsec-=1000000000L;}
   if(pthread_cond_timedwait(&lx_handoff.ready,&lx_handoff.lock,&until))break;
  }
- if(lx_handoff.error||lx_handoff.dropped){pthread_mutex_unlock(&lx_handoff.lock);return -1;}
+ if(lx_handoff.error){pthread_mutex_unlock(&lx_handoff.lock);return -1;}
  int got=lx_handoff.used<(unsigned)n?(int)lx_handoff.used:n;
  for(int i=0;i<got;i++){pcm[i]=lx_handoff.pcm[lx_handoff.tail];lx_handoff.tail=(lx_handoff.tail+1)%LX_HANDOFF_CAP;lx_handoff.used--;}
  pthread_mutex_unlock(&lx_handoff.lock);

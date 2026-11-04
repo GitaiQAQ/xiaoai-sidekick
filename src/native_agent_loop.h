@@ -78,7 +78,6 @@ static int lx_agent_run(struct lx_agent_provider *p,struct lx_agent_host *h,
  unsigned seen_audio=s->audio_delta,seen_done=s->done,seen_audio_done=s->audio_done,seen_transcript=s->transcript;
  unsigned seen_input=s->input_started,seen_canceled=s->canceled;
  int frames=0,sent_during_answer=0,sent_during_tool=0;const char *reason="remote_closed";int failed=0;
- int end_requested=0;int64_t end_deadline=0;
  int64_t started=lx_agent_now();
  int awaiting_reply=0;int64_t progress_at=started,music_queued_at=0;
  unsigned seen_committed=s->committed,seen_text=s->text;
@@ -156,7 +155,10 @@ static int lx_agent_run(struct lx_agent_provider *p,struct lx_agent_host *h,
     static const char unmute[]="{\"type\":\"input_audio_unmute.commit\"}";
     if(!lim->full_duplex&&!turn.answer_active&&p->send_json(p->ctx,unmute)){reason="tool_unmute_error";break;}
     lx_turn_voice(&turn,lx_agent_now());
-    if(h->tool_end(h->ctx)){end_requested=1;end_deadline=lx_agent_now()+5000;}
+    /* session_end is authoritative: the tool result is already sent, so close
+       now instead of waiting for a spoken reply that the model was told not to
+       produce. */
+    if(h->tool_end(h->ctx)){reason="end_requested";break;}
    }else if(done<0){reason="tool_result_error";break;}
   }
   /* After a reply, server ASR events decide whether the user began a new turn.
@@ -180,8 +182,8 @@ static int lx_agent_run(struct lx_agent_provider *p,struct lx_agent_host *h,
    lx_turn_done(&turn,lx_agent_now());
   }
   int action=(lim->answer_mode&&!h->tool_busy(h->ctx)&&!s->pending_call&&turn.answer_active&&turn.answer_ended)?
-   lx_turn_played(&turn,lx_agent_now(),h->playback_idle(h->ctx),end_requested?0:lim->followup_ms):0;
-  if(action<0){reason=end_requested?"end_requested":"answer_complete";break;}
+   lx_turn_played(&turn,lx_agent_now(),h->playback_idle(h->ctx),lim->followup_ms):0;
+  if(action<0){reason="answer_complete";break;}
   if(action>0){
    if(h->tool_has_ticket(h->ctx)){reason="music_queued";break;}
    static const char unmute[]="{\"type\":\"input_audio_unmute.commit\"}";
@@ -195,7 +197,6 @@ static int lx_agent_run(struct lx_agent_provider *p,struct lx_agent_host *h,
    if(!music_queued_at)music_queued_at=lx_agent_now();
    if(!h->tool_busy(h->ctx)&&lx_agent_now()-music_queued_at>=15000){reason="music_queued";break;}
   }else music_queued_at=0;
-  if(end_requested&&!turn.answer_active&&lx_agent_now()>=end_deadline){reason="end_requested";break;}
   if(lim->answer_mode&&!h->tool_busy(h->ctx)&&awaiting_reply&&lim->no_response_ms>0&&
      (!turn.answer_active||h->playback_idle(h->ctx))&&lx_agent_now()-progress_at>=lim->no_response_ms){reason="no_response";break;}
   const char *timed=lx_turn_timeout(&turn,lx_agent_now(),lim->no_speech_ms);

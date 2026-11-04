@@ -171,6 +171,7 @@ static int lx_capture_recover(struct lx_capture *c,long error) {
  c->used=0;c->tail=0;
  c->fill=0;c->decim=0;c->mic_acc=0;c->ref_acc=0;
  if(c->ops.recover(c->pcm,(int)error,1)<0){c->failed=1;return -1;}
+ c->failed=0;
  return 0;
 }
 
