@@ -37,7 +37,7 @@ int main(void){
  qn=build_query(q,LX_MDNS_NAME,1);q[5]=2;assert(!mdns_match_query(q,qn,&qend));checks++;/* QDCOUNT != 1 */
 
  qn=build_query(q,LX_MDNS_NAME,1);assert(mdns_match_query(q,qn,&qend));
- const unsigned char ip[4]={192,168,100,210};
+ const unsigned char ip[4]={192,0,2,10}; /* TEST-NET-1; never a device address */
  unsigned char out[512];size_t o=mdns_answer_packet(out,sizeof out,q,qend,ip,LX_MDNS_TTL,1);
  assert(o==qend+16);checks++;
  assert(out[2]==0x84&&out[3]==0x00);assert(out[5]==1&&out[7]==1);/* QR+AA, QD=1 AN=1 */

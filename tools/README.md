@@ -62,7 +62,7 @@ The input extraction must already exist, and the output parent directory must ex
 
 ## mDNS name
 
-The Web console embeds the responder in `src/native_mdns.h` and advertises `xiaoai.local` and `doubaodoubao.local` for its current IPv4; it does not change the kernel hostname or stop the factory `mdnsd` (`lx06.local` keeps working). `clang ... tools/test-mdns-host.c` checks packet encoding/parsing on the host and runs as part of `bash tools/test-speaker-tools-local.sh`. `Check-WebConsole.py` also verifies that the console accepts both names and rejects lookalike hosts. Android browsers do not resolve `.local`.
+The Web console embeds the responder in `src/native_mdns.h` and advertises `xiaoai.local` and `doubaodoubao.local` for its current IPv4; it does not change the kernel hostname or stop the factory `mdnsd` (`lx06.local` keeps working). `clang ... tools/test-mdns-host.c` checks packet encoding/parsing on the host and runs as part of `bash tools/test-speaker-tools-local.sh`. `Check-WebConsole.py` also verifies that the console accepts both names and rejects lookalike hosts. Android browsers do not resolve `.local`. Set `LX06_BASE_URL` explicitly before running real-speaker checks.
 
 ## Data and safety boundaries
 

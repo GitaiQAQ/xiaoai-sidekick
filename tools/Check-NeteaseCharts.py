@@ -2,9 +2,12 @@
 import json
 import urllib.request
 import urllib.error
+import os
 from pathlib import Path
 
-BASE = 'http://192.168.100.210'
+BASE = os.environ.get('LX06_BASE_URL', '').rstrip('/')
+if not BASE.startswith(('http://', 'https://')):
+    raise SystemExit('Set LX06_BASE_URL to the speaker console URL, for example http://<speaker-ip>')
 s = json.load(urllib.request.urlopen(BASE + '/api/v1/state', timeout=15))
 headers = {'Content-Type': 'application/json', 'Origin': BASE, 'X-LX06-Token': s['csrf']}
 
