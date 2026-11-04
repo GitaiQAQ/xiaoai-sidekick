@@ -32,7 +32,7 @@ GOT 基址通过 ELF 的 DT_PLTGOT 核对为 0x333000；引用分别由重定位
 
 ## 原生程序与隔离实验
 
-源码在 `src/native_protocol.h`、`src/native_protocol.c`、`src/lx06_probe.c`、`src/unix_handover_test.c`。构建与临时运行脚本在 `tools/Build-NativeProbe.ps1`、`tools/Run-NativeProbe.ps1`；本报告记录其对应实验范围与结果。
+源码在 `src/native_protocol.h`、`src/native_protocol.c`、`src/lx06_probe.c`、`src/unix_handover_test.c`。构建与临时运行脚本为 `tools/Build-NativeProbe.sh` 和 `tools/Run-NativeProbe.sh`；本报告记录对应实验范围与结果。
 
 协议解析器只输出方向、类型、流类型和音频长度，不复制音频、文字、dialog_id 或供应方字符串，不分配堆内存。它检查关键字段、长度与 varint 边界，但不是完整 protobuf schema 校验器；未解析子消息的全部必填字段仍未验证。测试输入均为合成数据，20 项检查包括合法上下行样本、逐字节截断、重复字段、方向冲突和整数溢出。
 
@@ -42,7 +42,6 @@ socket 实验只使用随机新建的 /tmp/lx06-socket-test-XXXXXX 目录。原�
 
 ## 遇到的问题与处理
 
-Windows 主机版编译因 Zig 生成 user32 导入库失败而终止，未称其测试成功。改为直接编译 Linux ARM 程序并在音箱执行，成功。Linux 构建曾输出 Zig 自带 musl CRT 的兼容警告，最终退出码为 0；本项目 C 源码以 -Wall -Wextra -Werror 编译。
 
 首轮临时传输发现设备没有 base64 命令，退出清理移除了不完整临时文件。随后改用 shell printf 的八进制转义传输，远端 SHA256 与本地一致才执行；没有额外安装工具。Zig 仅解包到 PC 项目 tools，官方压缩包按官方下载元数据校验 SHA256。
 

@@ -6,7 +6,7 @@ XiaoAI Sidekick is an experimental project for a rooted Xiaomi XiaoAI Speaker Pr
 
 Useful contributions include:
 
-- reproducible builds on a clean machine;
+- reproducible GitHub Actions application artifacts;
 - read-only compatibility research for other speaker models or firmware versions;
 - wake-word evaluation with consented recordings and clearly described conditions;
 - safer deployment, recovery, and regression procedures;
@@ -42,7 +42,7 @@ Do not publish credentials, personal recordings, private labels, device dumps, r
 
 ## Local development
 
-The primary documented native build scripts use Windows PowerShell and Zig 0.13. Some dependencies are local and are not committed. See [tools/README.md](tools/README.md) for the current setup and known platform limitations. A clean, cross-platform build workflow is not yet established.
+Application binaries are produced by the GitHub Actions workflow. Do not commit generated binaries or firmware images.
 
 Before submitting code, run the checks relevant to the changed area and report the exact commands and results. Do not claim a device test when only a local build or simulated input was used. For device-facing changes, include the target, firmware, recovery method, and observed post-change state in the review description.
 

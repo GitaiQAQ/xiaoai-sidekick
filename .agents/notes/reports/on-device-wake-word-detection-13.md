@@ -30,7 +30,7 @@
 - 新增 `--daemon <pidfile>`：`fork` + `setsid` + 0700 pidfile，SSH 断开不带走进程。
 - `deploy/start.sh`：Key 经 0600 FIFO 传入，判醒后才读，不落盘、不进 argv；`stop.sh` 杀客户端与写入者、删 FIFO、按路径兜底；`status.sh` 显示进程、openspeech 连接与日志尾。
 - 安装到 `/data/lx06-agent/`（ubifs，新建目录，余量 8.2 MB），未配置开机自启。
-- 新增 `tools/Manage-LX06Service.ps1`：安装/启动/停止/状态；`-FakeKey` 只验证启停。
+- 新增 `tools/Manage-LX06Service.sh`：安装/启动/停止/状态；`-FakeKey` 只验证启停。
 
 ## 测量结果
 
@@ -56,14 +56,6 @@
 
 ## 复现命令
 
-```powershell
-.\tools\Run-NativeProbe.ps1 -Kind kws-score
-.\tools\Run-NativeProbe.ps1 -Kind kws-live -Seconds 20
-.\tools\Run-NativeProbe.ps1 -Kind kws-signal -Seconds 8
-.\tools\Invoke-DoubaoSmoke.ps1 -Duplex -KwsWav -Seconds 8
-.\tools\Manage-LX06Service.ps1 -Start -FakeKey -Standby 60
-.\tools\Manage-LX06Service.ps1 -Stop
-```
 
 ## 产物与证据
 

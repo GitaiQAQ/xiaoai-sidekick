@@ -19,7 +19,7 @@
 - 音乐播放且 AEC 生效时：阈值 15.0，连续 2 个命中暂停播放器 2.2 秒做确认，未确认则恢复，6 秒冷却；静音环境仍为 12.5 / 3 连击。
 - 新增 `--mic-compare <秒>` 诊断：同一段采集并行打分 ch0–ch5、6 麦混音、AEC、预处理各版本，只在内存中处理。
 
-顺带修复 Web 控制台的 daemon 启动：读取 API key 后把 stdin 指向 `/dev/null`，否则子进程占着 SSH stdin，启动命令永不返回；`Manage-LX06Web.ps1 -Start` 补上 `SSH_ASKPASS` 环境。
+顺带修复 Web 控制台的 daemon 启动：读取 API key 后把 stdin 指向 `/dev/null`，否则子进程占着 SSH stdin，启动命令永不返回；`Manage-LX06Web.sh -Start` 补上 `SSH_ASKPASS` 环境。
 
 ## 采样率错误时的测量结果
 
@@ -85,16 +85,6 @@ music_resumed_after_session=1
 
 ## 复现命令
 
-```powershell
-# 采集路径 A/B（20 秒，说话与不说话的窗口分开跑）
-& .\tools\Invoke-LX06.ps1 -Command "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --mic-compare 20"
-
-# 抑制量
-& .\tools\Invoke-LX06.ps1 -Command "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --aec-test 6"
-
-# 待机唤醒
-& .\tools\Invoke-LX06.ps1 -Command "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --kws 300"
-```
 
 ## 后续验证
 

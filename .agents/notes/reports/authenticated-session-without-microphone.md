@@ -9,14 +9,14 @@
 
 ## 一、凭据处理
 
-- Key 只写入 `private/credentials.json` 的 `realtime.api_key`，未出现在日志、命令行参数或远端 shell 中；运行时由 `Invoke-DoubaoSmoke.ps1` 通过独立 SSH 进程的 stdin 传给探针，远端命令只有固定的二进制路径和模式参数。
+- Key 只写入 `private/credentials.json` 的 `realtime.api_key`，未出现在日志、命令行参数或远端 shell 中；运行时由 `Invoke-DoubaoSmoke.sh` 通过独立 SSH 进程的 stdin 传给探针，远端命令只有固定的二进制路径和模式参数。
 - `tools/Check-LocalCredentials.py` 输出：`credentials_file_present=1`、`realtime_api_key_shape_ready=1`、`ark_api_key_shape_ready=0`、`ark_model_shape_ready=0`。
 - 用户是在聊天中直接贴出的 Key。该 Key 已进入对话记录，建议验证完成后到控制台轮换一次；轮换后只需改 `private/credentials.json`。
 - 方舟文本 Key 尚未提供，`ark` 段仍为空，文本链路未测试。
 
 ## 二、真实认证升级（无会话）
 
-`tools/Invoke-DoubaoSmoke.ps1 -Realtime`：
+`tools/Invoke-DoubaoSmoke.sh -Realtime`：
 
 ```text
 ws_transport=tls http_status=101 header_bytes=1223 auth_headers_sent=1
@@ -38,7 +38,7 @@ ws_operation=auth-upgrade-close result=pass
 
 然后等 `session.created`，发 `{"type":"session.close"}`，等 `session.closed`，最后做 WebSocket 关闭握手。
 
-`tools/Invoke-DoubaoSmoke.ps1 -Realtime -Session` 实测：
+`tools/Invoke-DoubaoSmoke.sh -Realtime -Session` 实测：
 
 ```text
 ws_transport=tls http_status=101 header_bytes=1228 auth_headers_sent=1

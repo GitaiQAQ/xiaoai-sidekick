@@ -83,7 +83,7 @@ music_chart_tracks与music_playlist_tracks同映射netease_chart_tracks并非按
 
 所有测试设备接口均为fake；Mac只写临时测试目录，未连接音箱或云服务。它们证明本地逻辑，不证明硬件已支持所有候选工具。
 
-运行 `sh tools/build-speaker-tools-candidate.sh`，ARM/glibc2.25 `-Wall -Wextra -Werror`ReleaseSmall/strip交叉构建通过；该脚本只构建应用，不执行/重建wake probe或上传。
+ARM/glibc 2.25 application candidates passed `-Wall -Wextra -Werror`, ReleaseSmall, and strip build checks; this step did not execute or rebuild the wake probe, or upload binaries.
 
 - Web：build/lx06-web-capability-candidate-armhf，94024字节，SHA256 `ea787bb8ff5511cb0791c4cf67dad6dd5b40cdbea533f3aa2b128ed24cecb60a`。
 - Duplex：build/lx06-duplex-capability-candidate-armhf，117476字节，SHA256 `2c575af55c9f20ae064162db2ba6d80a79725a5df5536340a7e2f7ea65dfe677`。

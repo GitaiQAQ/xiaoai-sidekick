@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
-# Shared Git Bash/Linux helpers for LX06 operations.
+# Shared Bash helpers for LX06 operations.
 
 LX06_TOOLS_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 LX06_PROJECT_DIR=$(cd -- "$LX06_TOOLS_DIR/.." && pwd)
 LX06_HOST=${LX06_HOST:-root@192.168.100.210}
 LX06_KNOWN_HOSTS=${LX06_KNOWN_HOSTS:-"$LX06_TOOLS_DIR/local/known_hosts"}
-if [ -n "${LX06_ASKPASS:-}" ]; then :
-elif [ "${OS:-}" = Windows_NT ]; then LX06_ASKPASS="$LX06_TOOLS_DIR/local/ssh-askpass.cmd"
-else LX06_ASKPASS="$LX06_TOOLS_DIR/ssh-askpass.sh"; fi
-if [ "${OS:-}" = Windows_NT ] && command -v cygpath >/dev/null 2>&1; then
-    LX06_ASKPASS=$(cygpath -w "$LX06_ASKPASS")
-fi
+LX06_ASKPASS=${LX06_ASKPASS:-"$LX06_TOOLS_DIR/ssh-askpass.sh"}
 export SSH_ASKPASS="$LX06_ASKPASS" SSH_ASKPASS_REQUIRE=force DISPLAY=${DISPLAY:-codex}
 
 lx06_die() { printf '%s\n' "$*" >&2; exit 1; }

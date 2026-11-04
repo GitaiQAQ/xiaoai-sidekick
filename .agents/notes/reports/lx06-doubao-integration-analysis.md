@@ -133,7 +133,6 @@ Open-XiaoAI 的 WebSocket/RPC 是社区项目自建的客户端与 Server 通信
 
 ## 6. 已刷入补丁到底改变了什么
 
-与本机原厂 system0 的已解出普通文件相比：1984 个相同，11 个改变，1 个新增，清单见 temp/manifests/rootfs-differences.csv。这个计数不含 Windows 未成功创建的符号链接，不能称完整 inode/权限/链接语义 diff。
 
 | 改动 | 实际影响 |
 |---|---|
@@ -241,10 +240,8 @@ Open-XiaoAI 的 WebSocket/RPC 是社区项目自建的客户端与 Server 通信
 - ../temp/manifests/factory-archive-list.txt、patched-archive-list.txt：镜像目录元数据。
 - ../rom/upstream/open-xiaoai-main：源码快照，ZIP 内 commit 注释 bc3396c64e2a435f354eb5cb12a203981f1fe422。
 - ../temp/manifests/download-sha256.csv：源码包与辅助工具下载哈希。
-- ../tools/Invoke-LX06.ps1：SSH 文本/二进制采集封装；凭据脚本仅用于公开默认固件口令，不能替代个人凭据安全存储。
-- ../tools/Compare-Rootfs.ps1：普通文件比较工具。
+- ../tools/Invoke-LX06.sh：SSH 文本/二进制采集封装；凭据脚本仅用于公开默认固件口令，不能替代个人凭据安全存储。
+- ../tools/Compare-Rootfs.sh：普通文件比较工具。
 
-Windows 不允许创建部分 Linux 符号链接，解包命令退出 2，日志记录链接失败；两个系统/补丁的归档测试本身通过。rootfs-* 目录仅用于静态阅读，不应直接拿 Windows 解包目录重新打固件。某些绝对链接被解包工具主动忽略。
 
 本轮所有联网源码/工具仅用于分析，没有把不明脚本通过 curl | sh 执行到音箱，没有部署原开源项目 Server/Client。后续报告应沿用本报告的证据分级与功能验收，不覆盖原始备份。
-

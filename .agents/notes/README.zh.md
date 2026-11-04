@@ -28,7 +28,7 @@
 
 ## 分类
 
-每条记录只属于一个分类，分类即目录。封闭集合定义在 `scripts/verify-agent-notes.ps1`；新增分类必须同时更新脚本和这张表。
+每条记录只属于一个分类，分类即目录。封闭集合定义在 `scripts/verify-agent-notes.py`；新增分类必须同时更新脚本和这张表。
 
 | 分类 | 覆盖内容 |
 |---|---|
@@ -90,12 +90,13 @@ Status: proposed | implemented | rejected
 
 约定必须可机械执行；没有门禁的约定会腐化。
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .agents/notes/scripts/verify-agent-notes.ps1
-```
 
 校验脚本检查：生命周期与分类的封闭集合、文件名模式、头部块与目录一致、各生命周期的章节骨架、implemented 中禁止的提案期标题、`## Alternatives considered` 是否存在、是否存在集中式 `INDEX.md`，以及两个受控区域（`reference/` 的文件名与 `# Reference:` 头部、`reports/` 的 `# Report:` 头部）。它只校验不生成，从不改写记录。
 
+```sh
+python3 .agents/notes/scripts/verify-agent-notes.py
+```
+
 ## 新增分类
 
-在同一次改动里更新 `scripts/verify-agent-notes.ps1` 的封闭集合和上面的表格。
+在同一次改动里更新 `scripts/verify-agent-notes.py` 的封闭集合和上面的表格。

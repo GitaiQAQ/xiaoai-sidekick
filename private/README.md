@@ -5,7 +5,7 @@
 | 路径 | 内容 | 为什么私有 |
 |---|---|---|
 | `credentials.json` | 豆包/方舟等 API Key | 泄露即风险 |
-| `ssh/` | `ssh-askpass.cmd`（设备 SSH 密码）、`known_hosts` | 凭据 |
+| `ssh/` | SSH askpass helper、`known_hosts` | 凭据 |
 | `inputs/readbacks/` | `boot0.img`、`boot1.img`、`system0.img`、`system1.img`、`system0-patched-readback.img`、`system1-ssh-read-partial.img` | 从本机读出的分区镜像，含设备特定状态 |
 | `inputs/recordings/doubao_enroll.wav` | 唤醒词录音 | 个人声纹 |
 | `inputs/live/live-*.bin`、`live-system-selected.tar.gz` | 运行时内存/回调快照、设备文件抽样 | 可能含会话数据，且不可复现 |

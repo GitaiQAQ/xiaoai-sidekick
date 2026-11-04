@@ -45,7 +45,7 @@ if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum "$file" | awk '{p
 elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 "$file" | awk '{print tolower($1)}')
 else echo 'sha256sum or shasum is required' >&2; exit 1; fi
 remote="/tmp/lx06-agent-$kind-${hash:0:12}"
-if command -v cygpath >/dev/null 2>&1; then pyfile=$(cygpath -w "$file"); else pyfile=$file; fi
+pyfile=$file
 octal=$($python -c 'import sys; print("".join("\\0%03o" % b for b in open(sys.argv[1], "rb").read()), end="")' "$pyfile")
 
 case "$kind" in

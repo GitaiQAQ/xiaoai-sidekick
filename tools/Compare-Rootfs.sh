@@ -11,7 +11,7 @@ while (($#)); do
 done
 PROJECT_DIR=$(cd -- "$PROJECT_DIR" && pwd)
 source "$SCRIPT_DIR/Resolve-SystemTool.sh"
-PYTHON=$(resolve_system_tool python.exe)
+PYTHON=$(resolve_system_tool python3)
 mkdir -p "$PROJECT_DIR/temp/manifests"
 PROJECT_DIR="$PROJECT_DIR" "$PYTHON" - <<'PY'
 import csv

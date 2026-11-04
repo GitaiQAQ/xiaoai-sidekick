@@ -55,6 +55,6 @@ audio_peak=11317
 
 ## 六、产物
 
-- `src/native_duplex_client.c`，构建 `Build-NativeGlibc.ps1 -Duplex`，运行 `Invoke-DoubaoSmoke.ps1 -Duplex -Seconds N`。
+- `src/native_duplex_client.c`，构建 `Build-NativeGlibc.sh -Duplex`，运行 `Invoke-DoubaoSmoke.sh -Duplex -Seconds N`。
 - 日志 `logs/duplex-runtime.txt`；测试音 `-Duplex -Tone`。
 - 探针与工具链沿用第十轮，SHA 校验与临时文件清理不变。

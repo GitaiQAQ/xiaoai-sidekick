@@ -22,8 +22,8 @@
 - src/native_music.h：json-c动态加载，固定ubus子进程（不经shell），输出上限8192B、子进程超时；只返回状态/音量/循环/进度/时长数值，不向模型传回账号或原始上下文。直接URL最长900B，仅HTTP/HTTPS，拒绝控制字符/用户认证形式；使用JSON构造器转义参数。
 - src/native_music_client.c：stdin JSON命令state/play/pause/resume/stop；PR_SET_DUMPABLE=0。--self-test只做参数拒绝测试，不播放。
 - src/native_music_stream_test.c：静态musl回环HTTP测试源，55秒硬上限、127.0.0.1:18087、20秒低幅度WAV、支持基本Range，960B块按20ms实时发送，不是生产代理。
-- tools/Build-NativeGlibc.ps1 -Music和native-library-elf.py支持新目标。原厂glibc显式loader运行，不安装依赖。
-- tools/Test-NativeMusic.ps1：随机/tmp目录、上传SHA验证、只在非播放状态短测、清理本次播放与临时程序。未作持久部署。
+- tools/Build-NativeGlibc.sh -Music和native-library-elf.py支持新目标。原厂glibc显式loader运行，不安装依赖。
+- tools/Test-NativeMusic.sh：随机/tmp目录、上传SHA验证、只在非播放状态短测、清理本次播放与临时程序。未作持久部署。
 
 ## 验证证据
 
@@ -35,10 +35,5 @@ logs/native-music-stream-attempt2.txt保留第二轮stop状态假设失败。最
 
 ## 复现命令与未完成事项
 
-```powershell
-.\tools\Build-NativeGlibc.ps1 -Music
-.\vendor\zig-portable\zig-windows-x86_64-0.13.0\zig.exe cc -target arm-linux-musleabihf -mcpu=cortex_a53 -std=c11 -Wall -Wextra -Werror -Oz -static -s src/native_music_stream_test.c -o build/lx06-music-fixture-armhf
-.\tools\Test-NativeMusic.ps1
-```
 
 下一步：账号登录与授权音源接口；在同一provider接口接网易云。先验证搜索/歌曲权限/一首会员完整播放，再谈完整会员能力。播放基础增加双曲目队列、seek和自然结束测试，接入豆包function call与TTS暂停恢复仲裁。不要将本次WAV回环成功外推为真实网易云服务已完成。

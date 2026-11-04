@@ -31,7 +31,7 @@ Zig直接生成glibc目标的首轮链接触发编译器内部错误；拆开编
 
 后续探针在main开头设置自身PR_SET_DUMPABLE=0并读回确认；最新运行已验证该状态，且正常退出。没有改全局core_pattern或原厂服务的dump设置。该措施不能覆盖入口执行到main之前的错误，因此部署前的ELF及loader校验仍不可省略。
 
-入口文件`src/arm_glibc_entry.S/c`没有任意应用构造函数支持，只用于当前明确无此需求的小程序，不能直接当作完整C++运行时。构建脚本`tools/Build-NativeGlibc.ps1`，运行包装`tools/Run-NativeProbe.ps1 -Kind libraries|tls`；本报告记录当时的设备操作范围。
+入口文件`src/arm_glibc_entry.S/c`没有任意应用构造函数支持，只用于当前明确无此需求的小程序，不能直接当作完整C++运行时。运行包装为`tools/Run-NativeProbe.sh --kind libraries|tls`；本报告记录当时的设备操作范围。
 
 ## 接下来使用的豆包接口
 

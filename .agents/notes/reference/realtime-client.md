@@ -6,19 +6,12 @@
 
 无密钥可验证：
 
-```powershell
-$p='C:\Users\gitai\Desktop\lx06-agent'
-& ([scriptblock]::Create((Get-Content -Raw "$p\tools\Build-NativeGlibc.ps1"))) -ProjectDir $p
-& ([scriptblock]::Create((Get-Content -Raw "$p\tools\Run-NativeProbe.ps1"))) -ProjectDir $p -Kind ws-test
-& ([scriptblock]::Create((Get-Content -Raw "$p\tools\Run-NativeProbe.ps1"))) -ProjectDir $p -Kind ws-loopback
-& ([scriptblock]::Create((Get-Content -Raw "$p\tools\Invoke-DoubaoSmoke.ps1"))) -ProjectDir $p -Realtime -TransportTest
-```
 
-`ws-test`包含RFC固定掩码向量、增量解析/UTF8/分片/控制帧、握手头校验以及原厂SHA1/Base64的RFC Accept固定向量。`ws-loopback`在设备上用 `--ws-test-server` 起 127.0.0.1 场景对端，再用 `--ws-local` 走同一条认证分支，覆盖正常101+关闭、错误Accept、HTTP400、不发Close四种情况；它只连回环，不代表云端可用。`-TransportTest`只传公开假Key，设备检查字段，不建立网络连接。三个测试都使用/tmp临时二进制、远端SHA校验和清理。
+`ws-test`包含RFC固定掩码向量、增量解析/UTF8/分片/控制帧、握手头校验以及原厂SHA1/Base64的RFC Accept固定向量。`ws-loopback`在设备上用 `--ws-test-server` 起 127.0.0.1 场景对端，再用 `--ws-local` 走同一条认证分支，覆盖正常101+关闭、错误Accept、HTTP400、不发Close四种情况；它只连回环，不代表云端可用。`--transport-test`只传公开假Key，设备检查字段，不建立网络连接。三个测试都使用/tmp临时二进制、远端SHA校验和清理。
 
 回环模式只用于控制流验证：`ws_test_server` 按请求里的 `Sec-WebSocket-Key` 用原厂 libcrypto 计算 Accept，`--ws-local` 发送固定假 Key `loopback-test-key`，不读取凭据。
 
-凭据填入private/credentials.json的realtime.api_key后，`Invoke-DoubaoSmoke.ps1 -Realtime`才执行一次认证升级/关闭。该入口与Ark共用安全传输包装，但只取相应服务的字段；不把语音Key发给文本接口。旧Invoke-ArkSmoke.ps1保留文本模式入口。
+凭据填入private/credentials.json的realtime.api_key后，`bash tools/Invoke-DoubaoSmoke.sh --realtime`才执行一次认证升级/关闭。该入口与文本模式共用安全传输包装，但只取相应服务的字段；不把语音Key发给文本接口。
 
 帧模块使用调用方提供的缓存，当前消息上限64KiB，累计分片不能超过上限；超界关闭并报错，不截断或无限扩容。这个上限尚未与服务端音频delta最大尺寸交叉验证，音频集成前必须验证，不可仅凭测试推断兼容。`--ws-session` 会在101之后发送JSON `session.create`（model 1.2.6.1、输入pcm 16000、输出pcm_s16le 24000、音色`zh_female_vv_uranus_bigtts`），等`session.created`，再发`session.close`等`session.closed`，全程不发送音频。2026-11-01 实测 `session_created=1 error_event=0 session_closed=1`，随后Close 1000。语音上行/下行仍未测试。
 

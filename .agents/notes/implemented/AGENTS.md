@@ -24,8 +24,6 @@ If the decision itself is superseded, write a new note and archive the old one (
 
 Every note keeps the `implemented/` skeleton from [../README.md](../README.md): `# Agent Note:`, `Status: implemented`, `## Problem`, `## Decision`, `## Consequences`, `## Alternatives considered`. Proposal-era headings are rejected.
 
-Run the gate after any edit:
+Run the gate with `python3 .agents/notes/scripts/verify-agent-notes.py` after editing notes.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .agents/notes/scripts/verify-agent-notes.ps1
-```
+Run the gate after any edit:

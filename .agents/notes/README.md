@@ -28,7 +28,7 @@ Raw material and generator scripts live outside this directory: `rom/` (public R
 
 ## Classification
 
-Each note belongs to exactly one class encoded in its folder. The closed set is defined by `scripts/verify-agent-notes.ps1`; adding a class requires updating the script and this table.
+Each note belongs to exactly one class encoded in its folder. The closed set is defined by `scripts/verify-agent-notes.py`; adding a class requires updating the script and this table.
 
 | Class | What it covers |
 |---|---|
@@ -90,12 +90,13 @@ Archival path: `archived/{class}/yyyy-mm-dd-topic-title.md` — `implemented` is
 
 The convention is machine-checked; a convention without a gate rots.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .agents/notes/scripts/verify-agent-notes.ps1
-```
 
 The verifier checks the closed lifecycle and class sets, the filename pattern, the header block and its agreement with the folder, the per-lifecycle section skeleton, the banned proposal-era headings in implemented notes, the presence of `## Alternatives considered`, the absence of a centralized `INDEX.md`, and the controlled areas (`reference/` names and `# Reference:` headers, `reports/` `# Report:` headers). It is verify-don't-generate: it never rewrites a note.
 
+```sh
+python3 .agents/notes/scripts/verify-agent-notes.py
+```
+
 ## Adding a class
 
-Update the closed set in `scripts/verify-agent-notes.ps1` and the table above in the same change.
+Update the closed set in `scripts/verify-agent-notes.py` and the table above in the same change.

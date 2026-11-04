@@ -60,15 +60,13 @@ Do not flash an image or write a partition based only on a successful build. Bef
 
 ## Build and install status
 
-The source includes native C programs, web assets, and build/deployment scripts. Project automation uses Bash scripts on Windows (through Git Bash), macOS, and Linux, with Zig 0.13 and host Python tools. Some scripts still require local firmware inputs, device credentials, or separately installed packages. The repository does **not** currently let a new user build a complete firmware image and safely install it from source alone.
-
-For the existing application build commands and their prerequisites, see [tools/README.md](tools/README.md). Do not treat an application binary build as a firmware image build. Installation is device-specific and should only be attempted after the recovery plan described above is ready.
+GitHub Actions is configured to build the Web and Duplex application binaries and publish them as workflow artifacts. These application binaries are not firmware images. Installation remains device-specific and should only be attempted after the recovery plan described above is ready.
 
 ## Wake-model training
 
 The repository contains experimental training and model-format tools under `tools/`, plus the baseline v5 two-stage acoustic model files under `models/wake-doubao-v5/`. A later device configuration adjusted the decoding graph without changing the acoustic networks; the exact adjusted model containers are not checked in. The checked-in files make the baseline weights available, but do not include private recordings or a complete ready-to-run training environment. The [model card](models/wake-doubao-v5/README.md) records checksums, intended use, and evaluation limits.
 
-Training currently depends on locally supplied recordings, generated speech/audio-recognition assets, and factory-format templates extracted from a compatible device image. The scripts and data preparation steps still have local-environment assumptions. A user can study and extend the training pipeline, but a clean-clone, end-to-end custom training workflow is not yet established. See the [wake-model primer](.agents/notes/reference/wake-model-primer.md), [training workflow and prerequisites](.agents/notes/reference/wake-model-training.md), and [privacy guidance](SECURITY.md).
+Training currently depends on locally supplied recordings, generated speech/audio-recognition assets, and factory-format templates extracted from a compatible device image. A clean-clone, end-to-end custom training workflow is not yet established. See the [wake-model primer](.agents/notes/reference/wake-model-primer.md), [training workflow](.agents/notes/reference/wake-model-training.md), and [privacy guidance](SECURITY.md).
 
 Never publish personal recordings, recognition transcripts containing personal data, credentials, device dumps, or private training labels without explicit consent and a review of redistribution rights.
 
@@ -93,7 +91,7 @@ Never publish personal recordings, recognition transcripts containing personal d
 - [Agent Notes conventions](.agents/notes/README.md) — decision records, references, reports, and validation rules.
 - [Curated reference guide](.agents/notes/reference/knowledge.md) — maintained technical topics.
 - [Deployment and recovery](.agents/notes/reference/deployment-and-recovery.md) — device write boundaries and current rollback rules.
-- [Tools and build notes](tools/README.md) — local prerequisites and script entry points.
+- [Tools](tools/README.md) — deployment, diagnostics, and model tooling.
 - [Contributing](CONTRIBUTING.md) — contribution scope and review expectations.
 - [Security](SECURITY.md) — sensitive data and vulnerability reporting.
 - [ROM materials](rom/README.md) — upstream references and recovery boundaries.

@@ -27,10 +27,7 @@ command -v "$zig" >/dev/null 2>&1 || { echo "Zig compiler not found: $zig" >&2; 
 mkdir -p build
 flags=(-std=c11 -Wall -Wextra -Werror -O2 -ffp-contract=off -Isrc)
 if [[ -n $defines ]]; then read -r -a define_flags <<< "$defines"; flags+=("${define_flags[@]}"); fi
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) flags=(-target x86_64-windows-gnu "${flags[@]}"); exe=build/host-kws.exe ;;
-  *) exe=build/host-kws ;;
-esac
+exe=build/host-kws
 
 "$zig" cc "${flags[@]}" -o "$exe" build/host_kws_main.c || { echo 'build failed' >&2; exit 1; }
 "$exe" --dump "$wav" > "build/dump-$tag.txt"

@@ -20,7 +20,6 @@ XiaoAI Sidekick 是以 Zig 为核心的音箱运行平台。它以 Sidecar 方�
 - 自有机内服务、业务逻辑、协议、工具和适配器统一迁移为 Zig。
 - 浏览器页面继续使用 HTML、CSS 和 JavaScript。
 - 原厂动态库与必要的第三方库作为依赖保留，不重新实现 TLS、密码学和成熟音频解码器。
-- 必要的 Shell/PowerShell 只作为很薄的部署或开发包装层。
 - 固定 Zig 工具链版本，升级工具链作为独立变更验证。
 
 迁移的主要收益是清楚的模块契约、统一资源生命周期和可控内存；性能与体积是否改善必须实测，不能由语言名称推断。
@@ -404,7 +403,6 @@ xiaoai-sidekick/
 │   ├── replay/
 │   ├── architecture_check/
 │   └── release/
-├── scripts/                       # 薄 Shell/PowerShell 包装
 │   ├── build/
 │   ├── deploy/
 │   └── diagnostics/

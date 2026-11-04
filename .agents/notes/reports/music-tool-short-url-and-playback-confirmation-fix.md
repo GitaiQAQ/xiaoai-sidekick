@@ -38,7 +38,7 @@ commit日志只输出ticket present/matched/expired、短URL长度及队列数�
 
 最终Duplex SHA256 `435477cfb919e2a72df931cfad268317771cd751060e3cd8b12ba4c418f4f12e`，PID3796。start SHA256 `9393a0ea1752e033e110714ecae5222ea97e22f8df0083b017a10d265f0185b8`、stop `7c305fdcfae4682593707a84e0d8cca83072f068afa850f9aa957e4236940189`。
 
-构建：`sh tools/build-native-web.sh`（新增可复现脚本）、`sh tools/build-factory-wake.sh`。Web包含compiler-rt整数除法支持，经设备运行验证；两者都由factory loader启动，不改驱动或固件。staging逐文件SHA256验证再替换，凭据从Mac private JSON内存读后SSH stdin传递，未写入argv或工具输出。
+Web包含compiler-rt整数除法支持，经设备运行验证；两者都由factory loader启动，不改驱动或固件。staging逐文件SHA256验证再替换，凭据从Mac private JSON内存读后SSH stdin传递，未写入argv或工具输出。
 
 原Web e1e0230...恢复副本只留Mac `private/deploy-recovery/r37/lx06-web-armhf`，0600；Duplex旧efe0及安全脚本只留Mac `private/deploy-recovery/r36/music-prior/`。恢复需停止精确匹配的对应进程，从Mac上传副本到staging、核对SHA256、chmod700并替换，再用受保护stdin启动；设备没有历史备份，staging已清。
 

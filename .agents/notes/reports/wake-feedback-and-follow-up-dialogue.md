@@ -21,13 +21,6 @@
 
 主要修改：`src/native_duplex_client.c`、`native_kws.h`、`kws_templates.h`；新增 `native_session_policy.h/test.c`、`tools/Check-KwsReplay.py`。工具脚本修正 Status/Stop 不再隐式安装、上传 SHA 先验后替换、FIFO 说明和 LF 行尾。历史构建副本当时保存在 `build/revision14-original`；这是本地历史材料，不是当前部署备份规则。当前设备恢复材料必须保存在 Mac `private/deploy-recovery/`。当时的回滚步骤见部署参考文档。
 
-```powershell
-.\tools\Build-NativeGlibc.ps1 -Duplex
-.\vendor\zig-portable\zig-windows-x86_64-0.13.0\zig.exe cc -target x86_64-windows-gnu -std=c11 -Wall -Wextra -Werror -O2 -ffp-contract=off -Isrc -o build/host-kws-r14.exe build/host_kws_main.c
-.\vendor\python-analysis\python.exe tools/Check-KwsReplay.py
-.\vendor\zig-portable\zig-windows-x86_64-0.13.0\zig.exe cc -target x86_64-windows-gnu -std=c11 -Wall -Wextra -Werror -O2 src/native_session_policy_test.c -o build/session-policy-test.exe
-.\build\session-policy-test.exe
-```
 
 会话策略21项检查包含重复done、两轮恢复、播放未完不计时、8秒计时、单轮模式。不能替代真实网络与声学测试。
 

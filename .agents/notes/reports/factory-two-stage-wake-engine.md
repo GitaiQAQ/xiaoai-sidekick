@@ -11,16 +11,12 @@
 - 静态源：原厂 `libxaudio_engine.so`，SHA256 `ae3f7ca5502f74eb88d2001253cb0c3cd4fdb9d6e860c902b44964f0aa2dc65c`。以下指令地址是 ELF VA，不是运行地址。设备补丁只改既有录音设备字符串，相关代码布局此前已核对。
 - `src/native_wake_config_probe.c`：校验进程可执行路径、映射范围、两级类型后，只读固定白名单中的控制字。实机成功读取 108 B，不读音频、模型权重或凭据。对错误目标拒绝，退出码 2。
 - `src/native_wake_engine_probe.c`：独立进程调用现有动态库；支持仅初始化、生成静音，以及显式离线 S16LE 文件。没有调用 `init_system`、`create_xaudio`、录音接口或注册设备回调。
-- `tools/Build-WakeProbes.ps1` 构建两份探针；`tools/native-wake-dependencies.py` 从固件 ELF 导入/导出查找依赖所有者，不查询网络。
+- `tools/Build-WakeProbes.sh` 构建两份探针；`tools/native-wake-dependencies.py` 从固件 ELF 导入/导出查找依赖所有者，不查询网络。
 - 本地原始日志：`logs/native-wake-config-round24.txt`、`native-wake-config-guard-round24.txt`、`native-wake-engine-init4-round24.txt`、`native-wake-engine-silence-round24.txt`、`native-wake-engine-xiaoai-round24.txt`、`native-wake-engine-syscalls-round24.txt`、`native-wake-probe-health-round24.txt`。这些日志被 Git 忽略。
 - 静态函数提取：`temp/analysis/native-wake-stage-round24.txt`、`native-wake-handles-round24.txt`、`native-init-system-round24.txt`、`native-wake-thread-round24.txt`、`native-wake-suspect-round24.txt`；由既有 `tools/dump-native-functions.py` 对本轮涉及的符号生成。依赖归属在 `native-wake-import-owners.json`。
 
 构建：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/Build-WakeProbes.ps1
-vendor/python-analysis/python.exe tools/native-wake-dependencies.py
-```
 
 最终配置探针 47348 B，SHA256 `2b64b92e173cddbcad6e0074001dc645b37240750e4293331a15570ec9c0e0b2`；最终引擎探针 7596 B，SHA256 `1dbca9922221e54fe78fe77cd0cc617313d9972e496645c4e6d9dfc01e8efa9c`。旧版初始化与静音探针另有哈希，不能把早期日志当成最终产物的运行记录。
 
@@ -105,7 +101,6 @@ vendor/python-analysis/python.exe tools/native-wake-dependencies.py
 
 ### 合成“小爱同学”
 
-Windows SAPI 的 Microsoft Huihui Desktop 生成 16 kHz / S16 / 单声道“小爱同学”，不通过扬声器播放，而是直接把离线样本送入原厂引擎，另补 1 秒静音刷新结果。
 
 输入 PCM 60640 B，SHA256 `28ef7b7db2720b2ee6d7636dd582c1274fe854c79093b45c993ffbbbcee4b164`。静态 ABI 从 `xaudio_wrapper_wakeup`、`WakeupProcess` 与 C++ 包装层逐一核对：大结构返回值使用隐藏 r0 指针，后续是引擎、task、PCM 与栈上的字节数；`CreateTask` 在本机合法返回 NULL。
 

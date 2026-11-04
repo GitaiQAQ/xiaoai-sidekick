@@ -9,7 +9,7 @@
 ## 已实测
 
 1. `src/native_ark_client.c`在 LX06 上通过输入校验和**原厂 json-c 动态解析**自检，包括正常 completion、错误对象、空 choices、截断 JSON、null content。之前仅校验字符串的自检已扩展，日志 `logs/native-ark-test-runtime.txt`。
-2. `tools/Invoke-ArkSmoke.ps1 -TransportTest`使用公开假密钥，将最小 JSON 作为 SSH 远端进程 stdin 输入。设备只解析，不发送 HTTP。日志 `logs/ark-stdin-transport-test.txt`确认 `ark_stdin_config_valid=1 network_calls=0`。真实密钥无需进入命令参数、shell 脚本、远端配置文件或日志。
+2. `tools/Invoke-DoubaoSmoke.sh -TransportTest`使用公开假密钥，将最小 JSON 作为 SSH 远端进程 stdin 输入。设备只解析，不发送 HTTP。日志 `logs/ark-stdin-transport-test.txt`确认 `ark_stdin_config_valid=1 network_calls=0`。真实密钥无需进入命令参数、shell 脚本、远端配置文件或日志。
 3. 原厂 libcurl 7.55.1 `CONNECT_ONLY=1`与 `curl_easy_send/recv`可用：复用其 HTTPS 连接，发送固定新实时语音路径的 WebSocket 升级请求。没有认证头，收到 HTTP400，TLS verify=0、响应头1217B，峰值RSS1992KiB。`logs/native-ws-transport-runtime.txt`。400只证明该次收到拒绝响应，不能判定具体鉴权错误，更不能算101升级成功。
 4. 测试后临时二进制删除。原厂PID1282/2527未变，stdin测试后Mesh支持/启用/运行均true。未做全功能回归。
 
@@ -17,14 +17,7 @@
 
 Ark固定域名/路径，POST固定短提示词，max_tokens32，最多一次请求，5秒连接/20秒总超时，响应最多64KiB。保留证书和主机名校验，禁代理和重定向。仅输出HTTP/curl状态、长度与completion形状；不打印响应正文。程序先关闭自身dumpable，再读取stdin。JSON内的NUL通过字符串长度比对拒绝。鉴权模式要求HTTP200、TLS校验通过且有非空string content；这仍不是工具调用或完整对话验证。
 
-PowerShell执行策略环境下，本地调用方式：
 
-```powershell
-$p='C:\Users\gitai\Desktop\lx06-agent'
-& ([scriptblock]::Create((Get-Content -Raw "$p\tools\Build-NativeGlibc.ps1"))) -ProjectDir $p -Ark
-& ([scriptblock]::Create((Get-Content -Raw "$p\tools\Invoke-ArkSmoke.ps1"))) -ProjectDir $p -TransportTest
-# 私有凭据准备好后，去掉 -TransportTest 才会执行一次认证调用。
-```
 
 `-TransportTest`不读真实凭据。认证模式只从private/credentials.json或-CredentialsFile指定文件取ark字段，实时语音Key不会一同发给文本接口。现有模板仍为空，尚未做认证请求。
 

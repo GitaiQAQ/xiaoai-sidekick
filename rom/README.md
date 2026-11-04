@@ -13,7 +13,7 @@
 | `SHA256SUMS` | 上述文件的校验值 | **是** |
 | `upstream/open-xiaoai-main/` | 解压后的上游源码 | 否（可用 zip 重建） |
 
-原则：**有公开链接的字节不重复入库**。仓库只保存来源、校验值和获取脚本；本地下载的文件留在 `rom/` 但被 `.gitignore` 忽略。如果上游链接失效，再考虑把镜像放到自己的 release 里，并更新 `Fetch-Inputs.ps1` 的地址。
+原则：**有公开链接的字节不重复入库**。仓库只保存来源、校验值和获取脚本；本地下载的文件留在 `rom/` 但被 `.gitignore` 忽略。如果上游链接失效，再考虑把镜像放到自己的 release 里，并更新 `Fetch-Inputs.sh` 的地址。
 
 ```
 LX06_1.94.13.squashfs
@@ -26,8 +26,8 @@ LX06_1.94.13_patched.squashfs
 
 重新下载并校验（文件已存在且匹配时跳过）：
 
-```powershell
-powershell -NoProfile -File tools/Fetch-Inputs.ps1
+```sh
+bash tools/Fetch-Inputs.sh
 ```
 
 ## 为什么没有整机分区镜像
@@ -42,7 +42,7 @@ powershell -NoProfile -File tools/Fetch-Inputs.ps1
 
 ## 解包
 
-```powershell
+```sh
 # 需要 unsquashfs 或 7zip 的 squashfs 支持
 unsquashfs -d temp/rootfs-factory-system0 LX06_1.94.13.squashfs
 unsquashfs -d temp/rootfs-patched LX06_1.94.13_patched.squashfs
@@ -50,9 +50,9 @@ unsquashfs -d temp/rootfs-patched LX06_1.94.13_patched.squashfs
 
 解包产物属于可重建内容，统一放在 `temp/`，不提交。随后：
 
-```powershell
-powershell -NoProfile -File tools/Compare-Rootfs.ps1
-python tools\analyze-native-wakeup.py
+```sh
+bash tools/Compare-Rootfs.sh
+python3 tools/analyze-native-wakeup.py
 ```
 
 ## 许可

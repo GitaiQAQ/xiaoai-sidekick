@@ -91,13 +91,13 @@
 
 ## 8. 复现命令
 
-```powershell
+```sh
 # 8 通道电平
-ssh root@<speaker-ip> "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --afe-channels 2"
+bash tools/Invoke-LX06.sh --command "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --afe-channels 2"
 
 # AEC 抑制比（先让音乐播放，再执行）
-ssh root@<speaker-ip> "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --aec-test 4"
+bash tools/Invoke-LX06.sh --command "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --aec-test 4"
 
 # 采集路径 A/B：同一段语音并行打分，不保存音频
-ssh root@<speaker-ip> "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --mic-compare 20"
+bash tools/Invoke-LX06.sh --command "/lib/ld-linux-armhf.so.3 /data/lx06-agent/lx06-duplex-armhf --mic-compare 20"
 ```

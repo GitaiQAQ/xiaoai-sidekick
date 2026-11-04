@@ -13,7 +13,7 @@ while (($#)); do
 done
 PROJECT_DIR=$(cd -- "$PROJECT_DIR" && pwd)
 source "$SCRIPT_DIR/Resolve-SystemTool.sh"
-ZIG=$(resolve_system_tool zig.exe)
+ZIG=$(resolve_system_tool zig)
 OUT=$PROJECT_DIR/build
 mkdir -p "$OUT"
 sources=("$PROJECT_DIR/src/native_protocol.c" "$PROJECT_DIR/src/lx06_probe.c")

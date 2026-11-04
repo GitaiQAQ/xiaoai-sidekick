@@ -32,8 +32,8 @@
 | `src/kws_templates.h` | 生成物：3 个模板的 26 维特征、长度、偏移、阈值（`LX_KWS_TEMPLATE_*`） |
 | `src/native_duplex_client.c` | 在原有实时客户端上增加 `--kws-score/--kws-live/--kws-capture/--kws-wav/--kws` 模式 |
 | `tools/kws-build-templates.py` | 从设备 dump 生成 `src/kws_templates.h` |
-| `tools/Run-NativeProbe.ps1` | 新增 kind：`kws-score`、`kws-live`、`kws-capture`、`kws-replay` |
-| `tools/Build-NativeGlibc.ps1` | 增加 `-ffp-contract=off`，保证主机与设备打分结果逐位可比 |
+| `tools/Run-NativeProbe.sh` | 新增 kind：`kws-score`、`kws-live`、`kws-capture`、`kws-replay` |
+| `tools/Build-NativeGlibc.sh` | 增加 `-ffp-contract=off`，保证主机与设备打分结果逐位可比 |
 
 不引入 libm：`sin/cos/log/sqrt` 自行实现（host 上与 libm 对比：cos 误差 3.4e-6、log 1.1e-6、sqrt 相对 1.2e-7）。
 MFCC 逐帧结果与独立 Python 直接 DFT 参考实现一致到 1e-4（见 `build/check_mfcc.py`，开发期工具）。
@@ -134,27 +134,8 @@ scan_result wakes=5 first_wake_ms=1820 windows=102 best=0.0001
 
 ## 复现命令
 
-```powershell
-# 1) 离线自检（不联网、不读 Key）：打印分段、距离矩阵、模板簇、阈值、滑窗扫描
-.\tools\Run-NativeProbe.ps1 -Kind kws-score
 
-# 2) 回放注册录音走同一条检测链路（不联网；stdin 为空，判醒后只打印 wake_detected）
-.\tools\Run-NativeProbe.ps1 -Kind kws-replay
-
-# 3) 现场负样本：录 15 s 打分，不落盘、不联网
-.\tools\Run-NativeProbe.ps1 -Kind kws-capture -Seconds 15
-
-# 4) 现场待机监听 30 s，逐窗打印距离，不联网
-.\tools\Run-NativeProbe.ps1 -Kind kws-live -Seconds 30
-
-# 5) 真正的唤醒→豆包会话（需要 Key，需对设备说"豆包豆包"）
-.\tools\Invoke-DoubaoSmoke.ps1 -Duplex -Kws -KwsSeconds 60
-
-# 6) 不说话的整链验证：回放注册录音触发唤醒，再用真实 Key 建会话
-.\tools\Invoke-DoubaoSmoke.ps1 -Duplex -KwsWav -Seconds 20
-```
-
-设备端直接跑（二进制由 `tools\Build-NativeGlibc.ps1 -Duplex` 生成）：
+设备端直接跑（二进制由 `tools\Build-NativeGlibc.sh -Duplex` 生成）：
 
 ```
 /lib/ld-linux-armhf.so.3 <bin> --kws-score /tmp/doubao_enroll.wav

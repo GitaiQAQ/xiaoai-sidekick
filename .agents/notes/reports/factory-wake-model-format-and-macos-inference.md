@@ -170,7 +170,6 @@ input > padding(40,9) > splice[-2..2] 40→200 > affine 200→D > relu > normali
 - `tools/native-model-am.py`（重写）：soil 二进制网络的解析与序列化，带逐字节往返校验；输出 `temp/analysis/models/*/am-decoded.json`。
 - `tools/native-model-forward.py`（新增）：macOS 参考 MFCC、前向推理与 FST Viterbi。
 - `temp/analysis/r25-soil-component-loader.txt`：0x6f028 分派函数的反汇编。`temp/analysis/r25-RiceLoadModelBin.txt` 是上一阶段的产物。
-- 分析环境：`vendor/py`（Python 3.9 venv，含 capstone 5.0.3、pyelftools 0.31、numpy 2.0.2）。Windows 下的 `vendor/python-analysis` 在本机不可用。
 
 工具 SHA256：
 

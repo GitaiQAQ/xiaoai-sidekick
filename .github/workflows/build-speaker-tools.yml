@@ -1,0 +1,46 @@
+name: Build speaker applications
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v1
+        with:
+          version: 0.13.0
+
+      - name: Install extraction and ELF inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes squashfs-tools python3-pip
+          python3 -m pip install --user --break-system-packages pyelftools==0.31
+
+      - name: Fetch and verify public firmware inputs
+        run: bash tools/Fetch-Inputs.sh
+
+      - name: Extract factory runtime libraries
+        run: unsquashfs -d temp/rootfs-factory-system0 rom/LX06_1.94.13.squashfs
+
+      - name: Build Web and Duplex applications
+        run: |
+          bash tools/Build-NativeGlibc.sh --web
+          bash tools/Build-NativeGlibc.sh --duplex
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lx06-speaker-applications
+          path: |
+            build/lx06-web-armhf
+            build/lx06-duplex-armhf
+          if-no-files-found: error
+          retention-days: 30

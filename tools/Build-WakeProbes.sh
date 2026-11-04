@@ -11,7 +11,7 @@ while (($#)); do
 done
 PROJECT_DIR=$(cd -- "$PROJECT_DIR" && pwd)
 source "$SCRIPT_DIR/Resolve-SystemTool.sh"
-ZIG=$(resolve_system_tool zig.exe)
+ZIG=$(resolve_system_tool zig)
 OUT=$PROJECT_DIR/build
 mkdir -p "$OUT"
 "$ZIG" cc -target arm-linux-musleabihf -mcpu=cortex_a53 -std=c11 -Wall -Wextra -Werror -Oz -static -s "$PROJECT_DIR/src/native_wake_config_probe.c" -o "$OUT/lx06-wake-config-probe-armhf"

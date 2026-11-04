@@ -11,13 +11,8 @@ project_dir=$(cd -- "$project_dir" && pwd)
 python=${LX06_PYTHON:-}
 if [[ -z $python ]]; then for c in python3 python; do if command -v "$c" >/dev/null 2>&1; then python=$c; break; fi; done; fi
 [[ -n $python ]] || { echo 'python3 or python is required' >&2; exit 1; }
-if command -v cygpath >/dev/null 2>&1; then
-  music_file=$(cygpath -w "$project_dir/build/lx06-music-armhf")
-  fixture_file=$(cygpath -w "$project_dir/build/lx06-music-fixture-armhf")
-else
-  music_file="$project_dir/build/lx06-music-armhf"
-  fixture_file="$project_dir/build/lx06-music-fixture-armhf"
-fi
+music_file="$project_dir/build/lx06-music-armhf"
+fixture_file="$project_dir/build/lx06-music-fixture-armhf"
 for f in "$music_file" "$fixture_file"; do [[ -f $f ]] || { echo "missing binary: $f" >&2; exit 1; }; done
 if command -v sha256sum >/dev/null 2>&1; then
   music_hash=$(sha256sum "$project_dir/build/lx06-music-armhf" | awk '{print tolower($1)}')

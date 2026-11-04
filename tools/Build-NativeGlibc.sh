@@ -19,8 +19,8 @@ while (($#)); do
 done
 PROJECT_DIR=$(cd -- "$PROJECT_DIR" && pwd)
 source "$SCRIPT_DIR/Resolve-SystemTool.sh"
-ZIG=$(resolve_system_tool zig.exe)
-PYTHON=$(resolve_system_tool python.exe)
+ZIG=$(resolve_system_tool zig)
+PYTHON=$(resolve_system_tool python3)
 
 if ((WEB)); then source_name=native_web_console.c; binary=lx06-web-armhf
 elif ((MUSIC)); then source_name=native_music_client.c; binary=lx06-music-armhf

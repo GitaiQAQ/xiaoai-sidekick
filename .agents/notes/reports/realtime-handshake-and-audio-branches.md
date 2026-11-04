@@ -14,7 +14,7 @@
 
 `native_library_probe --ws-stdin`新增实际认证升级后关闭代码；从stdin读取原始语音Key，固定HTTPS端点、证书/主机名校验，发X-Api-Key，验证101及Accept后立即随机掩码Close1000，最多等3秒对端关闭。不发送session.create，不访问麦克风。**认证分支尚未实测**，不能把隔离测试等同云端验证。
 
-`tools/Invoke-DoubaoSmoke.ps1`统一文本与实时传输，-Realtime只使用realtime字段，默认文本只使用ark字段。旧Invoke-ArkSmoke保留兼容入口。-Realtime -TransportTest已在音箱验证公开假Key的stdin检查，无网络，日志realtime-stdin-transport-test.txt。真实凭据检查仍全部未准备好。
+`tools/Invoke-DoubaoSmoke.sh` 统一文本与实时传输：实时模式只使用 realtime 字段，默认文本模式只使用 ark 字段。公开假 Key 的 stdin 检查已在音箱验证，无网络调用；日志为 `realtime-stdin-transport-test.txt`。真实凭据检查仍未完成。
 
 加入认证分支后再次实测不带认证Upgrade：HTTP400、TLS verify0、头1224B、RSS2004KiB；没有会话创建或音频。日志native-ws-transport-runtime.txt。不能把400确定归因为某项权限或认为已经完成101握手。
 
