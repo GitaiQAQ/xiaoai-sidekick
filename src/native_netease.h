@@ -20,11 +20,11 @@ static struct {
  int (*enc_update)(void *,unsigned char *,int *,const unsigned char *,int);int (*enc_final)(void *,unsigned char *,int *);
  unsigned char *(*md5)(const unsigned char *,size_t,unsigned char *);
  int (*random)(unsigned char *,int);
- char music_u[4097],csrf[257],nmtid[513],qr[257],nickname[257],uid[40],error[64];
- int qr_code,authenticated,vip_type,last_api_code;int64_t qr_until,last_poll;
+ char music_u[4097],csrf[257],nmtid[513],qr[257],nickname[257],uid[40],avatar[512],error[64];
+ int qr_code,authenticated,vip_type,last_api_code,level,listen_songs,vip_level;int64_t qr_until,last_poll;
 } nc;
 #define NC_SESSION "/data/lx06-agent/netease.session"
-#define NC_STREAM_BASE "http://127.0.0.1:18080/r/"
+#define NC_STREAM_BASE "http://127.0.0.1:80/r/"
 static char nc_pending_url[901],nc_pending_ticket[33];static int64_t nc_pending_until;
 static struct lx_music_track nc_pending_track;
 static char nc_pending_urls[LX_MUSIC_QUEUE_MAX][160],nc_pending_playlist[256];static const char *nc_pending_urlptr[LX_MUSIC_QUEUE_MAX];static struct lx_music_track nc_pending_queue[LX_MUSIC_QUEUE_MAX];static int nc_pending_count;
@@ -116,12 +116,52 @@ static void *nc_request(const char *path,void *data){
 done:
  if(curl)nc.cleanup(curl);if(headers)nc.free_headers(headers);if(body){memset(body,0,28000);free(body);}if(response){memset(response,0,receive.used+1);free(response);}memset(cookie,0,sizeof(cookie));mj.put(data);return result;
 }
+static int nc_refresh(void);
+/* Avatar is shown through this console, not fetched by the browser from the
+   provider CDN. Accept only the provider's HTTPS artwork hosts. */
+#define NC_AVATAR_MAX (512*1024)
+static int nc_avatar_ok(const char *url){
+ if(!url)return 0;size_t n=strlen(url);if(n<12||n>=sizeof(nc.avatar)||strncmp(url,"https://",8))return 0;
+ const char *a=url+8,*slash=strchr(a,'/');if(!slash||slash==a)return 0;
+ size_t alen=(size_t)(slash-a);if(alen>120||memchr(a,'@',alen)||memchr(a,':',alen))return 0;
+ for(size_t i=0;i<alen;i++){char c=a[i];if(!isalnum((unsigned char)c)&&c!='.'&&c!='-'&&c!='_')return 0;}
+ static const char suffix[]=".music.126.net";size_t sl=sizeof(suffix)-1;if(alen<=sl)return 0;
+ for(size_t i=0;i<sl;i++){char c=a[alen-sl+i];if(c>='A'&&c<='Z')c=(char)(c|32);if(c!=suffix[i])return 0;}
+ for(const unsigned char *p=(const unsigned char *)url;*p;p++)if(*p<33||*p>126||*p=='"'||*p=='\\'||*p=='#')return 0;
+ return 1;
+}
+static void nc_copy_avatar(const char *url){
+ nc.avatar[0]=0;if(nc_avatar_ok(url))snprintf(nc.avatar,sizeof(nc.avatar),"%s",url);
+}
+static void nc_refresh_profile(void){
+ if(!nc.uid[0])return;
+ char path[64];snprintf(path,sizeof(path),"/api/v1/user/detail/%s",nc.uid);
+ void *d=mj.object();nc_add_i(d,"withUserPoint",1);void *o=nc_request(path,d),*prof=NULL,*v=NULL;
+ if(o&&nc.last_api_code==200){
+  if(mj.get(o,"level",&v)&&mj.type(v)==3)nc.level=(int)mj.integer64(v);
+  if(mj.get(o,"listenSongs",&v)&&mj.type(v)==3)nc.listen_songs=(int)mj.integer64(v);
+  if(mj.get(o,"profile",&prof)&&mj.type(prof)==4&&!nc.avatar[0])nc_copy_avatar(nc_string(prof,"avatarUrl"));
+ }
+ if(o)mj.put(o);
+ d=mj.object();nc_add_s(d,"userId",nc.uid);nc_add_i(d,"withUserPoint",1);
+ o=nc_request("/api/music-vip-membership/front/vip/info",d);
+ if(o&&nc.last_api_code==200){void *data=NULL;if(mj.get(o,"data",&data)&&mj.type(data)==4&&mj.get(data,"redVipLevel",&v)&&mj.type(v)==3)nc.vip_level=(int)mj.integer64(v);}
+ if(o)mj.put(o);
+}
+static unsigned nc_avatar_key(void){
+ unsigned h=2166136261u;if(!nc.avatar[0])return 0;
+ for(const unsigned char *p=(const unsigned char *)nc.avatar;*p;p++){h^=*p;h*=16777619u;}
+ return (h&0x7fffffffu)?(h&0x7fffffffu):1u;
+}
 static int nc_refresh(void){
  if(!nc.music_u[0]){snprintf(nc.error,sizeof(nc.error),"not_logged_in");return 1;}
  void *o=nc_request("/api/w/nuser/account/get",mj.object()),*profile=NULL,*v=NULL;int ok=o&&nc.last_api_code==200&&mj.get(o,"profile",&profile)&&mj.type(profile)==4;
  nc.authenticated=0;
- if(ok){const char *nick=nc_string(profile,"nickname");if(nick)snprintf(nc.nickname,sizeof(nc.nickname),"%s",nick);if(mj.get(profile,"userId",&v))snprintf(nc.uid,sizeof(nc.uid),"%lld",(long long)mj.integer64(v));lx_music_number(profile,"vipType",&nc.vip_type);nc.authenticated=1;}
- if(o)mj.put(o);if(!ok&&!nc.error[0])snprintf(nc.error,sizeof(nc.error),"session_not_confirmed");return !ok;
+ if(ok){const char *nick=nc_string(profile,"nickname");if(nick)snprintf(nc.nickname,sizeof(nc.nickname),"%s",nick);if(mj.get(profile,"userId",&v))snprintf(nc.uid,sizeof(nc.uid),"%lld",(long long)mj.integer64(v));lx_music_number(profile,"vipType",&nc.vip_type);nc_copy_avatar(nc_string(profile,"avatarUrl"));nc.level=nc.listen_songs=nc.vip_level=0;nc.authenticated=1;}
+ if(o)mj.put(o);
+ if(ok)nc_refresh_profile();
+ if(ok)nc.error[0]=0;
+ if(!ok&&!nc.error[0])snprintf(nc.error,sizeof(nc.error),"session_not_confirmed");return !ok;
 }
 /* Path segments are the only state carried by a queued URL. Percent-encode
    provider-specific IDs so a future provider can use any opaque ID. */
@@ -169,7 +209,35 @@ static int nc_resolve_stream_url(const char *id,const char *quality,char *out,si
  if(o)mj.put(o);return rc;
 }
 static void *nc_status(void){
- void *o=mj.object();nc_add_i(o,"ok",1);nc_add_s(o,"state",nc.authenticated?"logged_in":nc.music_u[0]?"session_saved":"logged_out");nc_add_i(o,"authenticated",nc.authenticated);nc_add_i(o,"session_saved",nc.music_u[0]!=0);nc_add_s(o,"nickname",nc.nickname);nc_add_s(o,"uid",nc.uid);nc_add_i(o,"vip_type",nc.vip_type);nc_add_s(o,"last_error",nc.error);nc_add_i(o,"api_code",nc.last_api_code);return o;
+ void *o=mj.object();nc_add_i(o,"ok",1);nc_add_s(o,"state",nc.authenticated?"logged_in":nc.music_u[0]?"session_saved":"logged_out");nc_add_i(o,"authenticated",nc.authenticated);nc_add_i(o,"session_saved",nc.music_u[0]!=0);nc_add_s(o,"nickname",nc.nickname);nc_add_s(o,"uid",nc.uid);nc_add_i(o,"vip_type",nc.vip_type);nc_add_i(o,"avatar",nc.avatar[0]!=0);nc_add_i(o,"avatar_key",(int)nc_avatar_key());nc_add_i(o,"level",nc.level);nc_add_i(o,"listen_songs",nc.listen_songs);nc_add_i(o,"vip_level",nc.vip_level);nc_add_s(o,"last_error",nc.error);nc_add_i(o,"api_code",nc.last_api_code);return o;
+}
+/* Fetches the avatar bytes server-side so CSP can stay same-origin only. */
+static int nc_fetch_avatar(unsigned char **data,size_t *len,char *type,size_t typecap){
+ *data=NULL;*len=0;if(typecap)type[0]=0;
+ if(!nc_avatar_ok(nc.avatar))return 1;
+ unsigned char *buffer=malloc(NC_AVATAR_MAX+1);if(!buffer)return 1;
+ struct nc_response receive={(char *)buffer,0,NC_AVATAR_MAX+1,0};buffer[0]=0;
+ CURL *curl=nc.init();if(!curl){free(buffer);return 1;}
+ struct curl_slist *headers=nc.append(NULL,"Accept: image/jpeg,image/png,image/webp,image/gif");
+ if(!headers){nc.cleanup(curl);free(buffer);return 1;}
+#define A(k,v) if(nc.set(curl,k,v)!=CURLE_OK){nc.free_headers(headers);nc.cleanup(curl);free(buffer);return 1;}
+ A(CURLOPT_URL,nc.avatar);A(CURLOPT_HTTPGET,1L);A(CURLOPT_HTTPHEADER,headers);A(CURLOPT_USERAGENT,"lx06-native-console");A(CURLOPT_PROXY,"");A(CURLOPT_FOLLOWLOCATION,0L);A(CURLOPT_SSL_VERIFYPEER,1L);A(CURLOPT_SSL_VERIFYHOST,2L);A(CURLOPT_NOSIGNAL,1L);A(CURLOPT_CONNECTTIMEOUT_MS,2500L);A(CURLOPT_TIMEOUT_MS,6000L);A(CURLOPT_WRITEFUNCTION,nc_receive);A(CURLOPT_WRITEDATA,&receive);
+#undef A
+ CURLcode transfer=nc.perform(curl);long status=0;char *content=NULL,ctype[64]="";
+ if(transfer==CURLE_OK)nc.getinfo(curl,CURLINFO_RESPONSE_CODE,&status);
+ if(transfer==CURLE_OK)nc.getinfo(curl,CURLINFO_CONTENT_TYPE,&content);
+ if(transfer==CURLE_OK&&content)snprintf(ctype,sizeof(ctype),"%s",content);
+ nc.free_headers(headers);nc.cleanup(curl);
+ const char *safe=NULL;
+ if(ctype[0]){size_t n=strcspn(ctype,"; \t");
+  if(n==10&&!strncasecmp(ctype,"image/jpeg",10))safe="image/jpeg";
+  else if(n==9&&!strncasecmp(ctype,"image/jpg",9))safe="image/jpeg";
+  else if(n==9&&!strncasecmp(ctype,"image/png",9))safe="image/png";
+  else if(n==11&&!strncasecmp(ctype,"image/webp",11))safe="image/webp";
+  else if(n==9&&!strncasecmp(ctype,"image/gif",9))safe="image/gif";
+ }
+ if(transfer!=CURLE_OK||status!=200||!safe||!receive.used||receive.overflow){free(buffer);return 1;}
+ snprintf(type,typecap,"%s",safe);*data=buffer;*len=receive.used;return 0;
 }
 static void *nc_qr_start(void){
  void *d=mj.object();nc_add_i(d,"type",3);void *o=nc_request("/api/login/qrcode/unikey",d),*data=NULL;
@@ -189,7 +257,7 @@ static void *nc_qr_check(void){
 }
 static void *nc_logout(void){
  nc_pending_ticket[0]=nc_pending_url[0]=0;nc_pending_count=0;
- int bad=unlink(NC_SESSION)&&errno!=ENOENT;memset(nc.music_u,0,sizeof(nc.music_u));memset(nc.csrf,0,sizeof(nc.csrf));nc.nickname[0]=nc.uid[0]=nc.qr[0]=nc.error[0]=0;nc.authenticated=nc.vip_type=0;
+ int bad=unlink(NC_SESSION)&&errno!=ENOENT;memset(nc.music_u,0,sizeof(nc.music_u));memset(nc.csrf,0,sizeof(nc.csrf));nc.nickname[0]=nc.uid[0]=nc.qr[0]=nc.avatar[0]=nc.error[0]=0;nc.authenticated=nc.vip_type=nc.level=nc.listen_songs=nc.vip_level=0;
  void *o=nc_status();nc_add_i(o,"ok",!bad);return o;
 }
 static int nc_id(void *obj,const char *field,char out[32]){

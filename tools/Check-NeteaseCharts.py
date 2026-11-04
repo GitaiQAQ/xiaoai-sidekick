@@ -4,7 +4,7 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-BASE = 'http://192.168.100.210:18080'
+BASE = 'http://192.168.100.210'
 s = json.load(urllib.request.urlopen(BASE + '/api/v1/state', timeout=15))
 headers = {'Content-Type': 'application/json', 'Origin': BASE, 'X-LX06-Token': s['csrf']}
 
@@ -22,7 +22,7 @@ assert code == 200 and charts['ok'] and 1 <= len(charts['items']) <= 80
 hot = next(x for x in charts['items'] if x['name'] == '热歌榜')
 code, envelope = command('music.netease.chart.tracks', {'id': hot['id']})
 tracks = envelope['result']
-assert code == 200 and tracks['ok'] and 1 <= len(tracks['items']) <= 20
+assert code == 200 and tracks['ok'] and 1 <= len(tracks['items']) <= tracks['limit']
 for rank, item in enumerate(tracks['items'], 1):
     assert item['id'].isdigit() and item['title'] and item['rank'] == rank
 code, _ = command('music.netease.chart.tracks', {'id': '../bad'})

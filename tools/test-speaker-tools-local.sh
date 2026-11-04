@@ -12,6 +12,8 @@ tail -n 1 "$TASK_TEST_DIR/bridge.log"
 python3 tools/test-tool-endpoint.py
 python3 tools/test-tools-catalog.py
 python3 tools/test-lamp-feedback.py
+clang -D_DEFAULT_SOURCE -std=c11 -Wall -Wextra -Werror -Wno-unused-function tools/test-mdns-host.c -o "$TASK_TEST_DIR/mdns"
+"$TASK_TEST_DIR/mdns"
 clang -D_DEFAULT_SOURCE -std=c11 -Wall -Wextra -Werror tools/test-agent-duplex.c -o "$TASK_TEST_DIR/duplex"
 "$TASK_TEST_DIR/duplex" > "$TASK_TEST_DIR/duplex.log"
 tail -n 1 "$TASK_TEST_DIR/duplex.log"

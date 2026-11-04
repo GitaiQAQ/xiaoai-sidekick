@@ -3,7 +3,7 @@ import urllib.error
 import json
 from pathlib import Path
 
-BASE = 'http://192.168.100.210:18080'
+BASE = 'http://192.168.100.210'
 rows = []
 
 
@@ -42,6 +42,26 @@ rows.append('cross_origin=rejected')
 code, h, b = request('/api/v1/command', b'{}', {'Origin': BASE, 'X-LX06-Token': 'wrong'})
 assert code == 403
 rows.append('wrong_token=rejected')
+code, h, b = request('/', headers={'Host': 'xiaoai.local'})
+assert code == 200
+rows.append('mdns_host=accepted')
+code, h, b = request('/', headers={'Host': 'doubaodoubao.local'})
+assert code == 200
+rows.append('mdns_alias_host=accepted')
+code, h, b = request('/', headers={'Host': 'xiaoai.local.evil.example'})
+assert code == 403
+rows.append('mdns_host_lookalike=rejected')
+code, h, b = request('/', headers={'Host': 'doubaodoubao.local.evil.example'})
+assert code == 403
+rows.append('mdns_alias_lookalike=rejected')
+H_MDNS = {'Content-Type': 'application/json', 'Origin': 'http://xiaoai.local', 'X-LX06-Token': s['csrf']}
+code, h, b = request('/api/v1/command', json.dumps({'v': 1, 'id': 'qa-mdns', 'method': 'unknown.method', 'params': {}}).encode(), H_MDNS)
+assert code == 400 and json.loads(b)['id'] == 'qa-mdns'
+rows.append('mdns_origin=accepted')
+H_ALIAS = {'Content-Type': 'application/json', 'Origin': 'http://doubaodoubao.local', 'X-LX06-Token': s['csrf']}
+code, h, b = request('/api/v1/command', json.dumps({'v': 1, 'id': 'qa-alias', 'method': 'unknown.method', 'params': {}}).encode(), H_ALIAS)
+assert code == 400 and json.loads(b)['id'] == 'qa-alias'
+rows.append('mdns_alias_origin=accepted')
 code, h, b = request('/api/v1/events')
 assert code == 200 and h['Content-Type'].startswith('text/event-stream') and b'event: state' in b
 rows.append('sse_snapshot=pass')

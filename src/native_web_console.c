@@ -20,15 +20,17 @@ static int64_t web_action_deadline;
 #include "native_music.h"
 #include "native_netease.h"
 #include "native_tools.h"
+#include "native_mdns.h"
 
 #define AGENT "/data/lx06-agent/lx06-duplex-armhf"
 #define PIDFILE "/data/lx06-agent/web.pid"
 #define HEADER_MAX 8192
 #define BODY_MAX 4096
 static volatile sig_atomic_t web_stop;
+static int64_t nc_auto_refresh_at;
 static char voice_key[4097],csrf[33];
 static const char *web_root="/data/lx06-agent/web";
-static unsigned short web_port=18080;
+static unsigned short web_port=80;
 static int64_t started;
 struct request {char method[8],path[160],host[100],origin[160],token[64];size_t length;};
 struct event {char action[32];int ok;int64_t at;};
@@ -112,6 +114,11 @@ static void stream_redirect(int fd,const char *path){
  if(rc){error_reply(fd,rc==2?401:503,rc==2?"login_required":"stream_unavailable");return;}
  redirect_reply(fd,url);
 }
+static void avatar_reply(int fd){
+ unsigned char *data=NULL;size_t len=0;char type[24];
+ if(nc_fetch_avatar(&data,&len,type,sizeof(type))){error_reply(fd,404,"avatar_unavailable");return;}
+ respond(fd,200,type,(const char *)data,len);free(data);
+}
 static int read_file(const char *path,char *out,size_t cap){FILE *f=fopen(path,"r");if(!f)return -1;size_t n=fread(out,1,cap-1,f);int bad=ferror(f)||(!feof(f)&&n==cap-1);fclose(f);out[n]=0;return bad?-1:(int)n;}
 static int agent_pid(void){
  FILE *f=fopen("/data/lx06-agent/lx06.pid","r");long pid=0;char path[96],cmd[512];
@@ -177,6 +184,11 @@ static void *build_state(void){
   if(mj.array_length(effects)>0)lx_music_number(mj.index(effects,0),"type",&effect);
  }
  add_i(lamp,"effect",effect);add_i(lamp,"on",effect!=0);if(led)mj.put(led);
+ /* Revalidate a saved session at most once a minute, with a bounded budget. */
+ if(nc.music_u[0]&&!nc.authenticated&&lx_music_ms()>=nc_auto_refresh_at){
+  nc_auto_refresh_at=lx_music_ms()+60000;int64_t saved=web_action_deadline;
+  web_action_deadline=lx_music_ms()+8000;nc_refresh();web_action_deadline=saved;
+ }
  mj.put(account);account=nc_status();add_s(account,"name","网易云音乐");
  unsigned count=event_count>12?12:event_count;
  for(unsigned i=0;i<count;i++){struct event *e=&events[(event_count-1-i)%12];void *o=mj.object();add_s(o,"action",e->action);add_i(o,"ok",e->ok);add_i(o,"age_seconds",(int)((lx_music_ms()-e->at)/1000));mj.append(recent,o);}
@@ -317,6 +329,26 @@ static void static_reply(int fd,const char *path){
  size_t n=(size_t)st.st_size;char *data=malloc(n?n:1);if(!data){close(f);error_reply(fd,503,"allocation_failed");return;}
  size_t used=0;while(used<n){ssize_t k=read(f,data+used,n-used);if(k<=0)break;used+=(size_t)k;}close(f);if(used==n)respond(fd,200,type,data,n);else error_reply(fd,503,"asset_read_failed");free(data);
 }
+/* Host/Origin allowlist. The advertised mDNS names plus the factory hostname
+   are accepted so the console works as http://xiaoai.local/; a DNS-rebinding
+   attacker cannot forge a Host that matches one of these names, and the CSRF
+   token check still applies. */
+static const char *const host_names[]={LX_MDNS_NAME,LX_MDNS_NAME2,"lx06.local"};
+static int host_ok(const char *host,const char *ip,unsigned short port){
+ char want[100];
+ if(!host[0])return 0;
+ if(!strcasecmp(host,ip))return 1;
+ snprintf(want,sizeof(want),"%s:%u",ip,(unsigned)port);if(!strcasecmp(host,want))return 1;
+ for(unsigned i=0;i<sizeof(host_names)/sizeof(host_names[0]);i++){
+  if(!strcasecmp(host,host_names[i]))return port==80;
+  snprintf(want,sizeof(want),"%s:%u",host_names[i],(unsigned)port);if(!strcasecmp(host,want))return 1;
+ }
+ return 0;
+}
+static int origin_ok(const char *origin,const char *ip,unsigned short port){
+ if(strncmp(origin,"http://",7))return 0;
+ return host_ok(origin+7,ip,port);
+}
 static void handle_connection(int fd){
  if(!music_wait_active)web_action_deadline=0;
  char buffer[HEADER_MAX+BODY_MAX+1];size_t used=0,head=0;int64_t until=lx_music_ms()+3000;
@@ -325,17 +357,17 @@ static void handle_connection(int fd){
  if(!head){error_reply(fd,400,"incomplete_headers");return;}
  char saved=buffer[head];buffer[head]=0;struct request r;int bad=parse_request(buffer,head,&r);buffer[head]=saved;
  if(bad||used>head+r.length){error_reply(fd,400,"invalid_request");return;}
- struct sockaddr_in local;socklen_t size=sizeof(local);char host[100]="",origin[160]="";if(!local_tool_request&&getsockname(fd,(struct sockaddr *)&local,&size)){error_reply(fd,403,"invalid_host");return;}
- if(!local_tool_request){
- snprintf(host,sizeof(host),"%s:%u",inet_ntoa(local.sin_addr),web_port);if(strcmp(r.host,host)){error_reply(fd,403,"invalid_host");return;}
- snprintf(origin,sizeof(origin),"http://%s",host);
+ struct sockaddr_in local;socklen_t size=sizeof(local);char ip[64]="";if(!local_tool_request){
+  if(getsockname(fd,(struct sockaddr *)&local,&size)){error_reply(fd,403,"invalid_host");return;}
+  snprintf(ip,sizeof(ip),"%s",inet_ntoa(local.sin_addr));
+  if(!host_ok(r.host,ip,web_port)){error_reply(fd,403,"invalid_host");return;}
  }
  while(used<head+r.length&&lx_music_ms()<until){ssize_t n=recv(fd,buffer+used,head+r.length-used,0);if(n<=0)break;used+=(size_t)n;}if(used!=head+r.length){error_reply(fd,400,"incomplete_body");return;}buffer[used]=0;
  if(music_wait_active&&(r.length||strncmp(r.path,"/r/",3)||(strcmp(r.method,"HEAD")&&strcmp(r.method,"GET")))){error_reply(fd,503,"playback_start_in_progress");return;}
  if(!local_tool_request&&!strcmp(r.method,"HEAD")&&!r.length&&!strncmp(r.path,"/r/",3)){stream_redirect(fd,r.path);return;}
- if(!local_tool_request&&!strcmp(r.method,"GET")&&!r.length){if(!strncmp(r.path,"/r/",3)){stream_redirect(fd,r.path);return;}if(!strcmp(r.path,"/api/state")||!strcmp(r.path,"/api/v1/state"))state_reply(fd);else if(!strcmp(r.path,"/api/v1/events"))event_reply(fd);else static_reply(fd,r.path);return;}
+ if(!local_tool_request&&!strcmp(r.method,"GET")&&!r.length){if(!strncmp(r.path,"/r/",3)){stream_redirect(fd,r.path);return;}if(!strcmp(r.path,"/api/state")||!strcmp(r.path,"/api/v1/state"))state_reply(fd);else if(!strcmp(r.path,"/api/v1/events"))event_reply(fd);else if(!strcmp(r.path,"/api/v1/avatar")||!strncmp(r.path,"/api/v1/avatar?",15))avatar_reply(fd);else static_reply(fd,r.path);return;}
  if(!strcmp(r.method,"POST")&&(!strcmp(r.path,"/api/action")||!strcmp(r.path,"/api/v1/command"))){
-  if(!local_tool_request&&(strcmp(r.origin,origin)||strcmp(r.token,csrf))){error_reply(fd,403,"origin_or_token_rejected");return;}
+  if(!local_tool_request&&(!origin_ok(r.origin,ip,web_port)||strcmp(r.token,csrf))){error_reply(fd,403,"origin_or_token_rejected");return;}
   if(local_tool_request&&strcmp(r.path,"/api/v1/command")){error_reply(fd,403,"tool_path_rejected");return;}
   if(!strcmp(r.path,"/api/v1/command"))command_reply(fd,buffer+head);else action_reply(fd,buffer+head);return;
  }
@@ -348,11 +380,18 @@ static void handle_connection(int fd){
 }
 static int parser_test(void){
  struct request r;int checks=0;
- const char *good="POST /api/action HTTP/1.1\r\nHost: 127.0.0.1:18080\r\nContent-Length: 2\r\n\r\n";
+ const char *good="POST /api/action HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n";
  if(parse_request(good,strlen(good),&r)||r.length!=2)return 1;checks++;
  const char *bad[]={"GET / HTTP/1.1\r\n\r\n","POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\n","GET / HTTP/1.1\r\nHost: x\r\nHost: y\r\n\r\n","POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n","POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 99999\r\n\r\n","GET / HTTP/1.1\nHost: x\n\n"};
  for(unsigned i=0;i<sizeof(bad)/sizeof(bad[0]);i++){if(!parse_request(bad[i],strlen(bad[i]),&r))return 1;checks++;}
- printf("web_parser checks=%d pass=1\n",checks);return 0;
+ const char *ip="192.168.100.210",*ok_hosts[]={"192.168.100.210","192.168.100.210:80","xiaoai.local","xiaoai.local:80","XIAOAI.LOCAL","doubaodoubao.local","doubaodoubao.local:80","DOUBAOdoubao.LOCAL","lx06.local"};
+ for(unsigned i=0;i<sizeof(ok_hosts)/sizeof(ok_hosts[0]);i++){if(!host_ok(ok_hosts[i],ip,80))return 1;checks++;}
+ const char *bad_hosts[]={"","xiaoai.local.evil.com","evil.local","xiaoai.local:8080","doubaodoubao.local:8080","doubaodoubao.local.evil.com","doubaodoubao","192.168.100.211","192.168.100.210.evil.com","xiaoai.local.","[::1]"};
+ for(unsigned i=0;i<sizeof(bad_hosts)/sizeof(bad_hosts[0]);i++){if(host_ok(bad_hosts[i],ip,80))return 1;checks++;}
+ if(!host_ok("xiaoai.local:8080",ip,8080)||!origin_ok("http://xiaoai.local:8080",ip,8080))return 1;checks+=2;
+ if(!host_ok("doubaodoubao.local:8080",ip,8080)||!origin_ok("http://doubaodoubao.local:8080",ip,8080))return 1;checks+=2;
+ if(origin_ok("https://xiaoai.local",ip,80)||origin_ok("https://doubaodoubao.local",ip,80)||origin_ok("http://evil.local",ip,80)||origin_ok("",ip,80))return 1;checks+=4;
+ printf("web_parser checks=%d pass=1 host_allowlist=pass\n",checks);return 0;
 }
 /* Playback opens /r/ on this same server. Service only its loopback redirects
    while verifying playback; do not accept reentrant tool or mutation calls. */
@@ -390,7 +429,18 @@ int main(int argc,char **argv){
  if(local_sock<0)return 1;fcntl(local_sock,F_SETFD,FD_CLOEXEC);unlink(TOOL_SOCKET);
  mode_t oldmask=umask(077);int local_bad=bind(local_sock,(struct sockaddr *)&un,sizeof(un))||chmod(TOOL_SOCKET,0600)||listen(local_sock,4);umask(oldmask);if(local_bad){close(local_sock);close(sock);return 1;}
  if(daemon){pid_t p=fork();if(p<0)return 1;if(p>0){close(sock);return 0;}if(setsid()<0)return 1;umask(077);FILE *f=fopen(PIDFILE,"w");if(!f)return 1;fprintf(f,"%d\n",(int)getpid());fclose(f);}
- music_wait_socket=sock;started=lx_music_ms();printf("web_ready port=%u credentials_loaded=%d\n",web_port,voice_key[0]!=0);fflush(stdout);
- while(!web_stop){struct pollfd p[2]={{sock,POLLIN,0},{local_sock,POLLIN,0}};if(poll(p,2,250)<=0)continue;for(int i=0;i<2&&!web_stop;i++){if(!(p[i].revents&POLLIN))continue;int fd=accept(p[i].fd,NULL,NULL);if(fd<0)continue;fcntl(fd,F_SETFD,FD_CLOEXEC);local_tool_request=i==1;handle_connection(fd);local_tool_request=0;close(fd);if(web_trim)web_trim(0);}}
+ music_wait_socket=sock;started=lx_music_ms();
+ /* Optional: advertise xiaoai.local alongside any factory responder. Failure
+    only loses the name, not the console. */
+ mdns_fd=mdns_open();if(mdns_fd>=0)mdns_tick(started);
+ printf("web_ready port=%u credentials_loaded=%d mdns=%d\n",web_port,voice_key[0]!=0,mdns_fd>=0);fflush(stdout);
+ while(!web_stop){
+  struct pollfd p[3]={{sock,POLLIN,0},{local_sock,POLLIN,0},{mdns_fd,POLLIN,0}};int n=mdns_fd>=0?3:2;
+  if(poll(p,(nfds_t)n,250)<=0)continue;
+  if(mdns_fd>=0&&(p[2].revents&POLLIN))mdns_handle(mdns_fd);
+  mdns_tick(lx_music_ms());
+  for(int i=0;i<2&&!web_stop;i++){if(!(p[i].revents&POLLIN))continue;int fd=accept(p[i].fd,NULL,NULL);if(fd<0)continue;fcntl(fd,F_SETFD,FD_CLOEXEC);local_tool_request=i==1;handle_connection(fd);local_tool_request=0;close(fd);if(web_trim)web_trim(0);}
+ }
+ if(mdns_fd>=0){mdns_announce(mdns_fd,0);close(mdns_fd);}
  close(local_sock);unlink(TOOL_SOCKET);close(sock);if(daemon)unlink(PIDFILE);volatile char *wipe=voice_key;for(size_t i=0;i<sizeof(voice_key);i++)wipe[i]=0;dlclose(json);return 0;
 }
