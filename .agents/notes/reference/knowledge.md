@@ -34,6 +34,6 @@ Agent Notes record durable decisions and their alternatives, not task progress. 
 
 ## Operational record
 
-The [operations log](../../../logs/operations.md) remains a chronological record of device and development actions. It is not the user guide or the current architecture specification.
+Chronological device and development notes are maintained locally and ignored by Git. They are not the user guide or the current architecture specification.
 
 - [Factory ROM ELF inventory](../reports/factory-rom-elf-inventory.md): generated per-file metadata and candidate dependencies for the defined 427-file extraction scope; not runtime behavior proof.

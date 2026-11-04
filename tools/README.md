@@ -49,6 +49,21 @@ python tools/wake-train.py eval --out temp/analysis/wake-train/d96
 
 These commands illustrate the current interface. They do not fetch datasets or factory templates, and they do not establish that a resulting model is suitable for deployment. Evaluate with user-recorded positive and negative samples, inspect false accepts and misses, and validate the selected model on the target speaker before deployment.
 
+## Static ROM ELF inventory
+
+`rom-elf-inventory.py` reads an extracted root filesystem with Python 3's standard library. It records ELF type, architecture, entry point, interpreter, dynamic dependencies, and candidate providers by filename or SONAME. It does not load libraries or execute ROM programs.
+
+```sh
+python3 tools/rom-elf-inventory.py temp/rootfs-factory-full --output temp/analysis/factory-rom-elf-inventory.json
+python3 tools/rom-elf-inventory.py temp/rootfs-factory-full --format markdown --output .agents/notes/reports/factory-rom-elf-inventory.md
+```
+
+The input extraction must already exist, and the output parent directory must exist. Scope is top-level `bin/`, `sbin/`, `usr/bin/`, `usr/sbin/` and recursive `lib/`, `usr/lib/`. Symlinks are skipped; the current extraction does not preserve their original metadata. Provider matches do not simulate loader search paths, symbol versions, or architecture selection. Missing candidates do not prove a runtime failure. The [ROM coverage report](../.agents/notes/reports/factory-rom-feature-coverage.md) tracks behavior and evidence gaps separately.
+
+## mDNS name
+
+The Web console embeds the responder in `src/native_mdns.h` and advertises `xiaoai.local` and `doubaodoubao.local` for its current IPv4; it does not change the kernel hostname or stop the factory `mdnsd` (`lx06.local` keeps working). `clang ... tools/test-mdns-host.c` checks packet encoding/parsing on the host and runs as part of `bash tools/test-speaker-tools-local.sh`. `Check-WebConsole.py` also verifies that the console accepts both names and rejects lookalike hosts. Android browsers do not resolve `.local`.
+
 ## Data and safety boundaries
 
 - `private/` contains credentials, personal recordings, and device-specific recovery material; never commit it.

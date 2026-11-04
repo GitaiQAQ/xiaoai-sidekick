@@ -85,7 +85,7 @@ Never publish personal recordings, recognition transcripts containing personal d
 | `.agents/notes/reference/` | Maintained technical references and current guidance |
 | `.agents/notes/reports/` | Evidence from experiments and device operations |
 | `.agents/notes/implemented/`, `proposed/`, `rejected/`, `archived/` | Decision records governed by Agent Notes |
-| `logs/operations.md` | Chronological operation record |
+| `logs/operations.md` | Local-only operation record; ignored by Git and not part of public clones |
 | `private/`, `temp/`, `build/` | Local/private inputs, generated files, and build outputs; not published. Large speech-model caches stay outside the checkout. |
 
 ## Documentation

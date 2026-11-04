@@ -70,4 +70,4 @@
 - 二进制：`build/lx06-duplex-armhf`，SHA256 `688100848D23532CBAA22D07E882FE9BA7A00D414A63666848DC09CF08D53870`
 - 设备：`/data/lx06-agent/{lx06-duplex-armhf,start.sh,stop.sh,status.sh}`，目录 0700
 - 文档：`.agents/notes/reference/kws.md`、`.agents/notes/reference/context.md`
-- 日志：`logs/operations.md` 第 78–82 条、`logs/native-kws-*-runtime.txt`
+-

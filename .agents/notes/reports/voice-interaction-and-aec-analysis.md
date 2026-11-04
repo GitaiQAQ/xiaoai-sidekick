@@ -48,7 +48,7 @@
 
 ## 部署状态
 
-- 部署与回滚记录见 `logs/operations.md` 第 105 条；回滚基线是 `/data/lx06-agent/revision20-original/`。
+-
 - Web 进程 PID 3662；语音进程已停止（`lx06.pid` 残留旧 PID，`agent_pid()` 会校验 `/proc/<pid>/cmdline`，不影响判断）。
 - 原厂 1282/2527 与 Mesh 正常。
 

@@ -1,6 +1,6 @@
 # 后续代理工作指引
 
-先阅读 README.md、.agents/notes/reference/context.md、logs/operations.md、.agents/notes/reference/sources.md。
+先阅读 README.md、.agents/notes/reference/context.md、.agents/notes/reference/sources.md；若本机存在 `logs/operations.md`，可作为本地记录读取，但不得提交。
 目标是机内 Agent，省去外部常开服务器，保留米家和网关功能。
 每次有实质进展后更新上下文和操作日志，区分实测、公开资料和推断。
 不要重复安装驱动。不要打印或提交账号、密钥、设备认证数据。
@@ -10,3 +10,5 @@ backups/ 作为原始资料保留，不直接编辑。对镜像做修改请输�
 
 
 用户已要求音箱不保留历史部署备份：部署回滚材料保存并校验到 Mac 的 private/deploy-recovery/，不要再创建 /data/lx06-agent/revision*-original；设备临时 staging 验收后清理。此规则不影响 backups/ 原始资料保留。
+
+部署 Web / duplex 二进制前必须运行 `bash tools/test-speaker-tools-local.sh`；部署后运行 `python3 tools/Check-WebConsole.py`。任何工具 schema、参数校验或工具分发改动，必须同时在 `tools/test-tool-endpoint.py` 或 `tools/test-speaker-capabilities.m` 增加一个用真实模型调用形态（例如数字型歌曲 ID）的回归用例。工具被拒绝时保留安全错误码日志，不记录模型参数。

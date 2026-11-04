@@ -38,7 +38,7 @@
 
 ## 历史部署记录
 
-- 部署前把当时设备上的 Web/语音二进制与三份页面文件备份到 `/data/lx06-agent/revision20-original/`（Web SHA256 `e45b9cb9…071f2a`，Duplex `3d561922…c65f9d`，三个页面文件哈希见 `logs/operations.md` 第 103 条）。
+- 部署前把当时设备上的 Web/语音二进制与三份页面文件备份到 `/data/lx06-agent/revision20-original/`（Web SHA256 `e45b9cb9…071f2a`，Duplex `3d561922…c65f9d`，三个页面文件哈希
 - 新 Web 二进制 SHA256 `86DA9335C1DC079EB11CE602459628191B95D19E4894E8CAADF082C33FAC9BA2`，已部署并与设备读回哈希一致；Duplex 未改动，仍为 `3D561922…`。
 - 原厂 `mipns-xiaomi` 1282、`mico_aivs_lab` 2527 全程未变；Mesh 正常运行；豆包语音保持停止。网易云会话未修改。
 - 回滚：停止 `web.pid` 对应进程，从 `revision20-original` 恢复同名文件后重启 Web；保留 `netease.session`。
