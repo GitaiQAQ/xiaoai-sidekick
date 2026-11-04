@@ -34,7 +34,22 @@ check("{\"name\":\"music_stop\\u0000unexpected\",\"arguments\":\"{}\"}",0,"inval
 check("{\"name\":\"shell\",\"arguments\":\"{}\"}",0,"unknown_tool");
 check("{\"name\":\"speaker_volume_set\",\"arguments\":{\"value\":40,\"unknown\":1}}",0,"invalid_tool_arguments");
 check("{\"name\":\"speaker_volume_set\",\"arguments\":{\"value\":40}}",1,NULL);
+check("{\"name\":\"session_end\",\"arguments\":\"{}\"}",1,NULL);
 check("{\"name\":\"music_status\",\"arguments\":{\"action\":\"reboot\"}}",0,"invalid_tool_arguments");
+/* Models routinely emit track IDs as JSON numbers; digit-only string fields must
+   normalize rather than fail. Regression for operations.md #296. */
+check("{\"name\":\"music_play\",\"arguments\":\"{\\\"id\\\":1412022124}\"}",1,NULL);
+check("{\"name\":\"music_play\",\"arguments\":\"{\\\"id\\\":1412022124,\\\"quality\\\":\\\"standard\\\"}\"}",1,NULL);
+check("{\"name\":\"music_play_chart\",\"arguments\":\"{\\\"id\\\":3778678}\"}",1,NULL);
+check("{\"name\":\"music_play\",\"arguments\":\"{\\\"id\\\":0}\"}",0,"invalid_tool_arguments");
+check("{\"name\":\"music_play\",\"arguments\":\"{\\\"id\\\":-1}\"}",0,"invalid_tool_arguments");
+check("{\"name\":\"music_play\",\"arguments\":\"{\\\"id\\\":1.5}\"}",0,"invalid_tool_arguments");
+check("{\"name\":\"music_play\",\"arguments\":\"{\\\"id\\\":1412022124,\\\"quality\\\":\\\"bogus\\\"}\"}",0,"invalid_tool_arguments");
+check("{\"name\":\"music_play\",\"arguments\":\"{\\\"id\\\":1412022124,\\\"album\\\":\\\"x\\\"}\"}",0,"invalid_tool_arguments");
+check("{\"name\":\"music_play\",\"arguments\":\"{\\\"quality\\\":\\\"standard\\\"}\"}",0,"invalid_tool_arguments");
+/* Non digit-pattern string fields keep rejecting numbers. */
+check("{\"name\":\"music_search\",\"arguments\":\"{\\\"query\\\":123}\"}",0,"invalid_tool_arguments");
+check("{\"name\":\"speaker_volume_set\",\"arguments\":\"{\\\"value\\\":\\\"40\\\"}\"}",0,"invalid_tool_arguments");
 [reply release];printf("tool_endpoint_mock=pass checks=%u malformed_arguments_no_execution=pass embedded_nul_no_execution=pass unknown_tool_no_execution=pass network_connections=0\n",checks);
 }return 0;}
 '''

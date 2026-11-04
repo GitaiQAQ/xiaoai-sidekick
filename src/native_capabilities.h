@@ -79,7 +79,13 @@ static int cap_tool_arguments_valid(const struct lx_tool_def *tool,void *args){
   if(!type){valid=0;break;}
   if(!strcmp(type,"integer")){int n;if(!cap_number(args,keys[i],&n)){valid=0;break;}int bound;if(cap_number(property,"minimum",&bound)&&n<bound)valid=0;if(cap_number(property,"maximum",&bound)&&n>bound)valid=0;}
   else if(!strcmp(type,"boolean")){int enabled;if(!cap_input_bool(args,keys[i],&enabled))valid=0;}
-  else if(!strcmp(type,"string")){const char *text=cap_string(args,keys[i]);if(!text){valid=0;break;}int length=cap_utf8_length(text),bound;if(length<0)valid=0;if(cap_number(property,"minLength",&bound)&&length<bound)valid=0;if(cap_number(property,"maxLength",&bound)&&length>bound)valid=0;
+  else if(!strcmp(type,"string")){const char *text=cap_string(args,keys[i]);
+   /* Models sometimes emit numeric track IDs even though the schema says
+      string. Digit-only fields (patterns like ^[0-9]+$) are safe to convert,
+      and the playback/alarm handlers already accept integers. */
+   if(!text&&mj.type(value)==3&&mj.integer64(value)>0){const char *pattern=cap_string(property,"pattern");
+    if(pattern&&!strcmp(pattern,"^[0-9]+$")){char digits[32];snprintf(digits,sizeof(digits),"%lld",(long long)mj.integer64(value));mj.add(args,keys[i],mj.new_string(digits));text=cap_string(args,keys[i]);}}
+   if(!text){valid=0;break;}int length=cap_utf8_length(text),bound;if(length<0)valid=0;if(cap_number(property,"minLength",&bound)&&length<bound)valid=0;if(cap_number(property,"maxLength",&bound)&&length>bound)valid=0;
    if(mj.get(property,"enum",&field)&&mj.type(field)==5){int matches=0;for(int j=0;j<mj.array_length(field);j++){void *candidate=mj.index(field,j);if(mj.type(candidate)==6&&!strcmp(mj.string(candidate),text))matches++;}if(!matches)valid=0;}
   }else valid=0;
  }

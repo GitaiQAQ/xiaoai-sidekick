@@ -52,5 +52,13 @@ int main(void){@autoreleasepool{
  const struct lx_tool_def *tool=lx_tool_find("speaker_volume_set",LX_TOOL_VOICE);p=jparse("{\"value\":40}");require(cap_tool_arguments_valid(tool,p));jput(p);const char *bad_args[]={"{}","{\"value\":101}","{\"value\":true}","{\"value\":3.5}","{\"value\":40,\"unknown\":1}"};for(unsigned i=0;i<5;i++){p=jparse(bad_args[i]);require(!cap_tool_arguments_valid(tool,p));jput(p);}
  p=jparse("{\"mode\":\"random\"}");require(!cap_tool_arguments_valid(lx_tool_find("music_mode_set",LX_TOOL_VOICE),p));jput(p);p=jparse("{\"query\":\"test\\u0000hidden\"}");require(!cap_tool_arguments_valid(lx_tool_find("music_search",LX_TOOL_VOICE),p));jput(p);
  p=jparse("{\"query\":\"你好世界你好世界你好世界你好世界你好世界你好世界你好世界你好世界你好世界你好世界\"}");require(cap_tool_arguments_valid(lx_tool_find("music_search",LX_TOOL_VOICE),p));jput(p);
+ /* Models often send track IDs as JSON integers; digit-pattern string fields
+    normalize to strings so dispatch sees the same shape as string calls. */
+ const struct lx_tool_def *play=lx_tool_find("music_play",LX_TOOL_VOICE);
+ p=jparse("{\"id\":1412022124}");require(cap_tool_arguments_valid(play,p));require([node(p)[@"id"] isEqual:@"1412022124"]);jput(p);
+ p=jparse("{\"id\":\"1412022124\"}");require(cap_tool_arguments_valid(play,p));jput(p);
+ p=jparse("{\"id\":1412022124,\"quality\":\"standard\"}");require(cap_tool_arguments_valid(play,p));jput(p);
+ const char *bad_ids[]={"{\"id\":0}","{\"id\":-1}","{\"id\":1.5}","{\"id\":true}","{\"id\":1412022124,\"album\":\"x\"}","{\"id\":1412022124,\"quality\":\"bogus\"}","{\"quality\":\"standard\"}"};for(unsigned i=0;i<7;i++){p=jparse(bad_ids[i]);require(!cap_tool_arguments_valid(play,p));jput(p);}
+ p=jparse("{\"query\":123}");require(!cap_tool_arguments_valid(lx_tool_find("music_search",LX_TOOL_VOICE),p));jput(p);
  unlink(mock_policy_path);rmdir(dir);printf("speaker_capabilities_mock=pass checks=%u network_connections=0 device_operations=0\n",checks);
  }return 0;}

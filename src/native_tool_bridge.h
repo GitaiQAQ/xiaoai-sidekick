@@ -105,7 +105,8 @@ static void *tb_worker(void *context){
   reply_budget+=result_size*2+512;
   void *item=tj.object(),*content=tj.array(),*text=tj.object();tj.add(item,"call_id",tj.str(id));tj.add(item,"role",tj.str("tool"));tj.add(text,"type",tj.str("input_text"));tj.add(text,"text",tj.str(tj.encode(result)));tj.append(content,text);tj.add(item,"content",content);tj.append(items,item);tj.put(result);
   /* Log only the allowlisted name and success, never model arguments. */
-  printf(did_execute&&recognized?"tool_executed name=%s\n":"tool_result_without_execution name=%s\n",recognized&&name&&tb_safe_id(name)?name:"rejected");fflush(stdout);
+  if(did_execute&&recognized)printf("tool_executed name=%s\n",name&&tb_safe_id(name)?name:"rejected");
+  else{const char *why=tb_s(result,"error");printf("tool_result_without_execution name=%s error=%s\n",recognized&&name&&tb_safe_id(name)?name:"rejected",why&&tb_safe_id(why)?why:"none");}fflush(stdout);
  }}
  tj.add(response,"type",tj.str("conversation.item.create"));tj.add(response,"items",items);char *reply=fatal_batch?NULL:strdup(tj.encode(response));tj.put(response);if(e)tj.put(e);
  pthread_mutex_lock(&j->lock);j->reply=reply;j->done=1;pthread_mutex_unlock(&j->lock);return NULL;
