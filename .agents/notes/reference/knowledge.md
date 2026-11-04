@@ -11,6 +11,7 @@ This guide maps each reader task to its current documentation owner. It is curat
 | Install or recover a device | [Deployment scope](deployment-and-recovery.md), [SSH access](ssh.md), [credentials](credentials.md) | Device writes require a target-specific recovery plan. Past reports are evidence, not authorization or a current recovery procedure. |
 | Understand audio capture and echo cancellation | [Audio pipeline](audio-pipeline.md) | [Capture-path AEC report](../reports/capture-path-echo-cancellation-integration.md), [voice/AEC analysis](../reports/voice-interaction-and-aec-analysis.md) |
 | Understand the web and local control interfaces | [Control protocol](control-protocol.md), [real-time client](realtime-client.md) | [Tool registry report](../reports/agent-loop-and-tool-registry.md) |
+| Track reverse engineering of the factory ROM | [ROM product feature coverage ledger](../reports/factory-rom-feature-coverage.md) | [Runtime interface inventory](../reports/factory-runtime-interface-inventory.md), [protocol reverse engineering](../reports/factory-protocol-reverse-engineering.md) |
 | Understand wake-to-speech handoff and general dialogue | [Local wake detection](kws.md), [real-time client](realtime-client.md) | [Round 35 handoff and dialogue report](../reports/realtime-wake-handoff-and-general-dialogue-fix.md); candidate changes are not yet field-validated. |
 | Train or evaluate a wake model | [Wake model primer](wake-model-primer.md), [training workflow](wake-model-training.md), [wake detection](kws.md) | [Training evaluation](../reports/custom-wake-model-training-and-macos-evaluation.md), [shared-state experiment](../reports/shared-state-wake-model-training.md), [decoder tuning](../reports/factory-wake-decoder-sensitivity-tuning.md), [device deployment](../reports/custom-wake-model-isolated-deployment.md) |
 | Understand music playback integration | [Control protocol](control-protocol.md) | [Playlist queue](../reports/player-track-metadata-and-playlist-queue.md), [native playback](../reports/on-device-music-stream-and-playback-control.md), [redirect refresh](../reports/local-redirect-refresh-and-native-loop.md) |
@@ -34,3 +35,5 @@ Agent Notes record durable decisions and their alternatives, not task progress. 
 ## Operational record
 
 The [operations log](../../../logs/operations.md) remains a chronological record of device and development actions. It is not the user guide or the current architecture specification.
+
+- [Factory ROM ELF inventory](../reports/factory-rom-elf-inventory.md): generated per-file metadata and candidate dependencies for the defined 427-file extraction scope; not runtime behavior proof.
