@@ -4,7 +4,7 @@ firmware/
 *.key
 *.log
 logs/*
-!logs/operations.md
+.prove-it/
 build/
 private/*
 !private/README.md
